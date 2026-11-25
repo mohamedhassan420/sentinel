@@ -4,11 +4,20 @@ import random
 from datetime import datetime, timezone
 
 from backend.models import Log
-from backend.simulator import brute_force, noise
+from backend.simulator import (
+    brute_force,
+    exfiltration,
+    full_chain,
+    noise,
+    phishing,
+    powershell,
+    privilege_escalation,
+)
 
-# One entry per attack scenario. Phase 2 adds the other four.
+# One entry per scenario: its name -> the function that writes its logs.
 SCENARIOS = {
-    brute_force.SCENARIO: brute_force.generate,
+    module.SCENARIO: module.generate
+    for module in (brute_force, phishing, powershell, privilege_escalation, exfiltration, full_chain)
 }
 
 
