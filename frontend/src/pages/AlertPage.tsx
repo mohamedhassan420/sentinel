@@ -49,7 +49,8 @@ function Details({ detail }: { detail: AlertDetail }) {
 
   return (
     <>
-      <div className="mt-3 text-sm">
+      {/* A flex row, so the dot, the word and the rest sit on one line. */}
+      <div className="mt-3 flex items-center gap-1.5 text-sm">
         <SeverityLabel severity={alert.severity} /> <span className="text-muted-foreground">severity alert</span>
       </div>
       <h1 className="mt-1 text-2xl font-semibold tracking-tight text-balance">{alert.title}</h1>
@@ -75,7 +76,7 @@ function Details({ detail }: { detail: AlertDetail }) {
             )}
           </section>
 
-          <section aria-labelledby="evidence-heading" className="panel overflow-hidden">
+          <section aria-labelledby="evidence-heading" className="panel overflow-clip">
             <div className="p-5 pb-3">
               <h2 id="evidence-heading" className="font-medium">
                 Evidence
@@ -129,7 +130,9 @@ function Details({ detail }: { detail: AlertDetail }) {
             </h2>
             <dl className="mt-3 grid grid-cols-[5.5rem_1fr] gap-x-3 gap-y-2.5">
               <dt className="text-muted-foreground">Time</dt>
-              <dd>{new Date(alert.time).toLocaleString()}</dd>
+              <dd>
+                <Timestamp iso={alert.time} inline />
+              </dd>
               <dt className="text-muted-foreground">Host</dt>
               <dd className="wrap-anywhere">{alert.host}</dd>
               <dt className="text-muted-foreground">User</dt>
@@ -213,7 +216,7 @@ function StatusPicker({ alert, onSaved }: { alert: Alert; onSaved: (alert: Alert
           ))}
         </div>
       </fieldset>
-      <p aria-live="polite" className={`mt-3 text-sm ${error ? 'text-destructive' : 'text-muted-foreground'}`}>
+      <p aria-live="polite" className={`mt-3 text-sm ${error ? 'text-error' : 'text-muted-foreground'}`}>
         {error ||
           'A true positive was a real attack. A false positive was harmless activity the rule mistook for one.'}
       </p>

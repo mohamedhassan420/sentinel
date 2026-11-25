@@ -20,7 +20,7 @@ Then open http://localhost:8000. The API's own documentation page is at http://l
 
 1. On the **Dashboard**, pick a scenario and press **Run scenario**. The open-alert counts and the ATT&CK strip update.
 2. Open **Alerts** and select an alert. Its page shows why the rule fired, the log lines that are the evidence, and a status you can change: New, In progress, Closed as true positive or Closed as false positive.
-3. Select **Read how this rule works** for the rule's Explain page: what the attack is, what the log shows, why the rule catches it, and the Security+ topic it connects to. **Rules** lists all ten.
+3. Select **Read how this rule works** for the rule's Explain page: what the attack is, what the log shows, why the rule catches it, and the Security+ topic it connects to. **Detections** lists all ten.
 4. **Logs** shows every line the simulator wrote, attack and background alike.
 
 To stop, press Ctrl+C in that terminal. To also delete the stored logs and alerts, run `docker compose down -v`.

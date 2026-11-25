@@ -20,7 +20,7 @@ export default function RulesPage() {
         them. Open a rule for a plain-English explanation of the attack and of how the rule catches it.
       </p>
 
-      <div className="panel mt-6 overflow-hidden">
+      <div className="panel mt-6 overflow-clip">
         {error ? (
           <Message title="The rules could not be loaded" detail={error}>
             <Button variant="outline" onClick={reload}>
@@ -47,10 +47,7 @@ export default function RulesPage() {
                     <span className="mb-1 block text-xs sm:hidden">
                       <SeverityLabel severity={rule.severity} />
                     </span>
-                    <a
-                      href={`#/rules/${rule.name}`}
-                      className="font-medium outline-none after:absolute after:inset-0 after:content-[''] hover:text-primary focus-visible:text-primary focus-visible:underline"
-                    >
+                    <a href={`#/rules/${rule.name}`} className="row-link">
                       {rule.title}
                     </a>
                     <span className="mt-1 block text-xs text-muted-foreground md:hidden">Reads {rule.log_source}</span>

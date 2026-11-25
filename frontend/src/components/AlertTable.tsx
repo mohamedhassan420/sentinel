@@ -29,8 +29,6 @@ export function AlertTable({ alerts }: { alerts: Alert[] }) {
 }
 
 function AlertRow({ alert }: { alert: Alert }) {
-  const tactics = <span className="block text-xs text-muted-foreground">{alert.attack_tactics.join(', ')}</span>
-
   return (
     <TableRow className="relative [&>td]:align-top">
       <TableCell className={`border-l-2 pl-2.5 tabular-nums ${SEVERITY_STYLE[alert.severity].edge}`}>
@@ -40,28 +38,27 @@ function AlertRow({ alert }: { alert: Alert }) {
         <SeverityLabel severity={alert.severity} />
       </TableCell>
       <TableCell className="whitespace-normal">
-        {/* Phones have no room for the other columns, so their content moves in here. */}
-        <span className="mb-1 block text-xs sm:hidden">
-          <SeverityLabel severity={alert.severity} />
+        {/* Small screens have no room for the other columns, so their content
+            moves in here: severity and status above the title, the rest below. */}
+        <span className="mb-1 flex justify-between gap-3 text-xs md:hidden">
+          <span className="sm:hidden">
+            <SeverityLabel severity={alert.severity} />
+          </span>
+          <StatusLabel status={alert.status} />
         </span>
-        {/* The "after" layer stretches this link over the whole row, so a
-            click anywhere on the row opens the alert. */}
-        <a
-          href={`#/alerts/${alert.id}`}
-          className="font-medium outline-none after:absolute after:inset-0 after:content-[''] hover:text-primary focus-visible:text-primary focus-visible:underline"
-        >
+        {/* One link covers the whole row (see .row-link in index.css). */}
+        <a href={`#/alerts/${alert.id}`} className="row-link">
           {alert.title}
         </a>
-        {/* On small screens the whole row is one link, so the techniques are plain text here. */}
-        <span className="mt-1 block tabular-nums xl:hidden">
-          {alert.attack_techniques.join(', ')}
-          {tactics}
-        </span>
-        <span className="mt-1 block text-xs text-muted-foreground lg:hidden">
-          {alert.user} on {alert.host}
-        </span>
-        <span className="mt-1 block text-xs md:hidden">
-          <StatusLabel status={alert.status} />
+        {/* The whole row is one link here, so the techniques are plain text. */}
+        <span className="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground xl:hidden">
+          <span>
+            <span className="text-foreground/85 tabular-nums">{alert.attack_techniques.join(', ')}</span>{' '}
+            {alert.attack_tactics.join(', ')}
+          </span>
+          <span className="lg:hidden">
+            {alert.user} on {alert.host}
+          </span>
         </span>
       </TableCell>
       <TableCell className="hidden whitespace-normal xl:table-cell">
@@ -71,7 +68,7 @@ function AlertRow({ alert }: { alert: Alert }) {
             <TechniqueLink key={technique} id={technique} />
           ))}
         </span>
-        {tactics}
+        <span className="block text-xs text-muted-foreground">{alert.attack_tactics.join(', ')}</span>
       </TableCell>
       <TableCell className="hidden truncate lg:table-cell">{alert.host}</TableCell>
       <TableCell className="hidden truncate lg:table-cell">{alert.user}</TableCell>
