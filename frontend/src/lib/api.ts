@@ -6,8 +6,9 @@ export type Log = {
   host: string
   user: string
   source: string
-  event_id: number
+  event_id: number | null // firewalls and mail gateways do not number their events
   message: string
+  fields: Record<string, string | number> // the same details by name; rules test these
   scenario: string
 }
 
@@ -26,7 +27,25 @@ export type LogFilters = {
 
 export type FilterOptions = { sources: string[]; event_ids: number[]; scenarios: string[] }
 
-export type RunResult = { added: number; attack: number; background: number }
+export type RunResult = { added: number; attack: number; background: number; alerts: number }
+
+export type Severity = 'Low' | 'Medium' | 'High' | 'Critical'
+
+export type Alert = {
+  id: number
+  time: string // when the last matching log happened
+  rule_id: string
+  title: string
+  severity: Severity
+  attack_tactics: string[] // the attacker's goal, e.g. "Credential Access"
+  attack_techniques: string[] // the method, e.g. "T1110"
+  host: string
+  user: string
+  log_ids: number[] // the logs that made the rule fire
+  status: string
+}
+
+export type AlertPage = { total: number; alerts: Alert[] }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response
@@ -51,4 +70,8 @@ export function getFilterOptions() {
 
 export function runScenario(scenario: string) {
   return request<RunResult>(`/api/simulate/${scenario}`, { method: 'POST' })
+}
+
+export function getAlerts(signal: AbortSignal) {
+  return request<AlertPage>('/api/alerts', { signal })
 }

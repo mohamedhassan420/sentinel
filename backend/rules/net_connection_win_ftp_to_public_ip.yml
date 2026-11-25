@@ -1,0 +1,31 @@
+title: FTP Connection To A Public IP Address
+id: ce6fcef9-7345-45ca-b978-84d46278d1b7
+status: experimental
+description: |
+  A program on a Windows machine connected to port 21 (FTP) on the public
+  internet. FTP is an old file-transfer protocol with no encryption, and
+  hardly any modern business software uses it. Attackers do, to move stolen
+  files out over a channel nobody is watching.
+references:
+  - https://attack.mitre.org/techniques/T1048/003/
+author: Mohamed Hassan
+date: 2026-11-25
+tags:
+  - attack.exfiltration
+  - attack.t1048.003
+logsource:
+  product: windows
+  category: network_connection
+detection:
+  selection:
+    DestinationPort: 21
+  # Private ranges (RFC 1918): FTP to an internal file server is left alone.
+  filter_private:
+    DestinationIp|cidr:
+      - 10.0.0.0/8
+      - 172.16.0.0/12
+      - 192.168.0.0/16
+  condition: selection and not filter_private
+falsepositives:
+  - Old equipment or a legacy supplier system that still exchanges files over FTP
+level: medium

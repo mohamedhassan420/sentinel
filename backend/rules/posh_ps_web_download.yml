@@ -1,0 +1,33 @@
+title: PowerShell Script Downloads From The Web
+id: 8151cbab-ac0a-4d52-b165-5e7d374c2b24
+status: experimental
+description: |
+  A PowerShell script used a command that fetches a file from a web address.
+  Script block logging (event 4104) records the script as PowerShell actually
+  ran it, after any encoding is removed, so the real commands are visible.
+  Attackers use these commands to pull their tools onto a machine.
+references:
+  - https://attack.mitre.org/techniques/T1059/001/
+  - https://attack.mitre.org/techniques/T1105/
+author: Mohamed Hassan
+date: 2026-11-25
+tags:
+  - attack.execution
+  - attack.t1059.001
+  - attack.command_and_control
+  - attack.t1105
+logsource:
+  product: windows
+  category: ps_script
+detection:
+  selection:
+    ScriptBlockText|contains:
+      - Invoke-WebRequest
+      - Net.WebClient
+      - DownloadString
+      - DownloadFile
+      - Start-BitsTransfer
+  condition: selection
+falsepositives:
+  - Administrators and installers that download software or updates with PowerShell
+level: medium

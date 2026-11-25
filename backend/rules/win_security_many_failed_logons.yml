@@ -1,0 +1,48 @@
+# A threshold rule is two YAML documents, the way Sigma writes it.
+#
+# This first one matches a single failed logon. On its own it raises nothing:
+# one failure is normal, because people mistype passwords.
+title: Failed Logon
+id: 7132fb93-42c3-4410-86ee-eb26f4e29336
+name: failed_logon # the name the second document refers to
+status: experimental
+description: One failed logon (Windows Security event 4625).
+author: Mohamed Hassan
+date: 2026-11-25
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    EventID: 4625
+  condition: selection
+---
+# The second document counts the matches of the first. This is the rule
+# that raises the alert.
+title: Many Failed Logons For One Account
+id: d57204ff-4a7c-4509-8d74-ed692fa74fd1
+status: experimental
+description: |
+  Twenty or more failed logons for the same account on the same machine
+  within five minutes. Nobody mistypes a password that often, so something
+  is guessing passwords: a brute force attack.
+references:
+  - https://attack.mitre.org/techniques/T1110/
+author: Mohamed Hassan
+date: 2026-11-25
+tags:
+  - attack.credential_access
+  - attack.t1110
+correlation:
+  type: event_count
+  rules:
+    - failed_logon
+  group-by:
+    - TargetUserName
+    - Computer
+  timespan: 5m
+  condition:
+    gte: 20
+falsepositives:
+  - A service or mapped drive that keeps retrying an old password after a password change
+level: medium

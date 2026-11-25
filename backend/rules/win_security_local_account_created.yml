@@ -1,0 +1,29 @@
+title: Local User Account Created
+id: 13b9a30c-f22b-4eaf-a359-2c90a66e82a3
+status: experimental
+description: |
+  A new user account was created on a workstation or member server (event
+  4720). Company accounts are created on the domain controller, so a new
+  account that exists on only one machine is unusual. Attackers create one
+  to keep a way back in if the stolen password is changed.
+references:
+  - https://attack.mitre.org/techniques/T1136/001/
+author: Mohamed Hassan
+date: 2026-11-25
+tags:
+  - attack.persistence
+  - attack.t1136.001
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    EventID: 4720
+  # On a domain controller, 4720 is IT creating a normal company account.
+  filter_domain_controller:
+    Computer|startswith: DC-
+  condition: selection and not filter_domain_controller
+falsepositives:
+  - IT support creating a local account while repairing a machine
+  - Software that creates its own local service account during installation
+level: low
