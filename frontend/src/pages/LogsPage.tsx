@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Play, RotateCw, Search, X } from 'lucide-react'
 
+import { Message } from '@/components/Message'
+import { Timestamp } from '@/components/Timestamp'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -12,30 +14,62 @@ import {
   type Log,
   type LogFilters,
   type LogPage,
+  type RunResult,
 } from '@/lib/api'
 
 const NO_FILTERS: LogFilters = { q: '', source: '', event_id: '', scenario: '', host: '', user: '' }
 
-// Plain-English names for the event IDs, keyed by "source:event ID" because
+// The attacks the simulator can write. The ids match the backend's scenario names.
+const SCENARIOS = [
+  {
+    id: 'brute_force',
+    label: 'Brute force login',
+    description: '40 failed logons on one account in two minutes, then one success.',
+  },
+  {
+    id: 'phishing',
+    label: 'Phishing',
+    description: 'An email from a lookalike domain with a macro attachment, then Word starting a command shell.',
+  },
+  {
+    id: 'powershell',
+    label: 'Malicious PowerShell',
+    description: 'PowerShell started with a hidden, encoded command that downloads a file.',
+  },
+  {
+    id: 'privilege_escalation',
+    label: 'Privilege escalation',
+    description: 'A new local account is created and added to the Administrators group.',
+  },
+  {
+    id: 'exfiltration',
+    label: 'Data exfiltration',
+    description: 'A workstation uploads about 2 GB to an outside address over FTP.',
+  },
+  {
+    id: 'full_chain',
+    label: 'Full attack chain',
+    description: 'Phishing, PowerShell, privilege escalation and exfiltration, in order, on one machine.',
+  },
+]
+
+// Plain-English names for the event types, keyed by "source:event ID" because
 // each tool numbers its own events (Sysmon's event 1 is not Windows' event 1).
+// Firewalls and mail gateways have no event IDs, hence "null".
 const EVENT_NAMES: Record<string, string> = {
   'Windows Security:4624': 'Logon succeeded',
   'Windows Security:4625': 'Logon failed',
+  'Windows Security:4720': 'Account created',
+  'Windows Security:4732': 'Added to a local group',
   'Sysmon:1': 'Process started',
+  'Sysmon:3': 'Network connection',
+  'PowerShell:4104': 'Script block',
+  'Firewall:null': 'Connection closed',
+  'Email Gateway:null': 'Message delivered',
 }
 
-const dateFormat = new Intl.DateTimeFormat(undefined, { day: '2-digit', month: 'short' })
-const timeFormat = new Intl.DateTimeFormat(undefined, {
-  hour: '2-digit',
-  minute: '2-digit',
-  second: '2-digit',
-  hour12: false,
-})
-
-// "brute_force" -> "Brute force"
-function scenarioLabel(scenario: string) {
-  const words = scenario.replaceAll('_', ' ')
-  return words.charAt(0).toUpperCase() + words.slice(1)
+function scenarioLabel(id: string) {
+  return SCENARIOS.find((scenario) => scenario.id === id)?.label ?? 'Background'
 }
 
 export default function LogsPage() {
@@ -43,8 +77,11 @@ export default function LogsPage() {
   const [options, setOptions] = useState<FilterOptions>({ sources: [], event_ids: [], scenarios: [] })
   const [page, setPage] = useState<LogPage | null>(null)
   const [error, setError] = useState('')
+  const [scenario, setScenario] = useState(SCENARIOS[0])
   const [running, setRunning] = useState(false)
-  const [notice, setNotice] = useState({ text: '', isError: false })
+  // What the last run did, or why it failed. Both are cleared by picking another scenario.
+  const [result, setResult] = useState<RunResult | null>(null)
+  const [runError, setRunError] = useState('')
   const [expandedId, setExpandedId] = useState<number | null>(null)
   // Adding 1 to this number makes the effects below fetch again.
   const [reload, setReload] = useState(0)
@@ -78,18 +115,21 @@ export default function LogsPage() {
     getFilterOptions().then(setOptions).catch(() => {})
   }, [reload])
 
-  async function runBruteForce() {
+  function chooseScenario(id: string) {
+    setScenario(SCENARIOS.find((candidate) => candidate.id === id) ?? SCENARIOS[0])
+    setResult(null)
+    setRunError('')
+  }
+
+  async function run() {
     setRunning(true)
-    setNotice({ text: '', isError: false })
+    setResult(null)
+    setRunError('')
     try {
-      const result = await runScenario('brute_force')
-      setNotice({
-        text: `Added ${result.added} log lines: ${result.attack} from the attack and ${result.background} of normal background activity.`,
-        isError: false,
-      })
+      setResult(await runScenario(scenario.id))
       setReload((n) => n + 1)
     } catch (problem) {
-      setNotice({ text: (problem as Error).message, isError: true })
+      setRunError((problem as Error).message)
     } finally {
       setRunning(false)
     }
@@ -101,11 +141,22 @@ export default function LogsPage() {
 
   const isFiltered = Object.values(filters).some((value) => value !== '')
 
-  const runButton = (
-    <Button onClick={runBruteForce} disabled={running}>
-      <Play aria-hidden />
-      {running ? 'Writing logs…' : 'Run brute force'}
-    </Button>
+  const runControls = (
+    <div className="flex gap-2">
+      <div className="w-48">
+        <FilterSelect label="Scenario to run" value={scenario.id} onChange={chooseScenario}>
+          {SCENARIOS.map((candidate) => (
+            <option key={candidate.id} value={candidate.id}>
+              {candidate.label}
+            </option>
+          ))}
+        </FilterSelect>
+      </div>
+      <Button onClick={run} disabled={running}>
+        <Play aria-hidden />
+        {running ? 'Writing logs…' : 'Run scenario'}
+      </Button>
+    </div>
   )
 
   return (
@@ -118,14 +169,33 @@ export default function LogsPage() {
             whether it matters is the detection engine's job.
           </p>
         </div>
-        {runButton}
+        {runControls}
       </div>
 
+      {/* One line under the header: what the chosen scenario will write, or what the last run did. */}
       <p
         aria-live="polite"
-        className={`mt-3 min-h-5 text-sm ${notice.isError ? 'text-destructive' : 'text-muted-foreground'}`}
+        className={`mt-3 min-h-5 text-sm ${runError ? 'text-destructive' : 'text-muted-foreground'}`}
       >
-        {notice.text}
+        {runError ? (
+          runError
+        ) : result ? (
+          <>
+            Added {result.added} log lines: {result.attack} from the attack and {result.background} of normal
+            background activity. The detection rules raised{' '}
+            <a
+              href="#/alerts"
+              className="rounded-sm text-primary underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {result.alerts} {result.alerts === 1 ? 'alert' : 'alerts'}
+            </a>
+            .
+          </>
+        ) : (
+          <>
+            <span className="text-foreground">{scenario.label}:</span> {scenario.description}
+          </>
+        )}
       </p>
 
       <form
@@ -160,9 +230,9 @@ export default function LogsPage() {
           ))}
         </FilterSelect>
         <FilterSelect label="Scenario" allLabel="All scenarios" value={filters.scenario} onChange={(v) => setFilter('scenario', v)}>
-          {options.scenarios.map((scenario) => (
-            <option key={scenario} value={scenario}>
-              {scenarioLabel(scenario)}
+          {options.scenarios.map((id) => (
+            <option key={id} value={id}>
+              {scenarioLabel(id)}
             </option>
           ))}
         </FilterSelect>
@@ -211,9 +281,12 @@ export default function LogsPage() {
         ) : page.total === 0 ? (
           <Message
             title="No logs yet"
-            detail="Run the brute force scenario to write 40 failed logons and one success, hidden among normal activity."
+            detail="Run a scenario to write an attack's log lines, hidden among normal activity. The detection rules check them as they arrive."
           >
-            {runButton}
+            <Button onClick={run} disabled={running}>
+              <Play aria-hidden />
+              {running ? 'Writing logs…' : `Run ${scenario.label.toLowerCase()}`}
+            </Button>
           </Message>
         ) : (
           <div aria-busy={loading} className={loading ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
@@ -225,7 +298,7 @@ export default function LogsPage() {
                   <TableHead className="hidden w-32 md:table-cell">Host</TableHead>
                   <TableHead className="hidden w-24 md:table-cell">User</TableHead>
                   <TableHead>Message</TableHead>
-                  <TableHead className="hidden w-28 lg:table-cell">Scenario</TableHead>
+                  <TableHead className="hidden w-36 lg:table-cell">Scenario</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -255,21 +328,19 @@ export default function LogsPage() {
 }
 
 function LogRow({ log, expanded, onToggle }: { log: Log; expanded: boolean; onToggle: () => void }) {
-  const time = new Date(log.time)
   const isAttack = log.scenario !== 'background'
   const event = (
     <>
-      <span className="tabular-nums">{log.event_id}</span>{' '}
-      <span className="text-muted-foreground">{EVENT_NAMES[`${log.source}:${log.event_id}`]}</span>
+      {log.event_id !== null && <span className="tabular-nums">{log.event_id} </span>}
+      <span className={log.event_id === null ? undefined : 'text-muted-foreground'}>
+        {EVENT_NAMES[`${log.source}:${log.event_id}`]}
+      </span>
     </>
   )
   return (
     <TableRow className="[&>td]:align-top">
       <TableCell className="tabular-nums">
-        <time dateTime={log.time} title={time.toLocaleString()}>
-          {timeFormat.format(time)}
-          <span className="block text-xs text-muted-foreground">{dateFormat.format(time)}</span>
-        </time>
+        <Timestamp iso={log.time} />
       </TableCell>
       <TableCell className="hidden whitespace-normal sm:table-cell">
         {event}
@@ -318,7 +389,7 @@ function FilterSelect({
   children,
 }: {
   label: string
-  allLabel: string
+  allLabel?: string // leave out for a select that always has a value
   value: string
   onChange: (value: string) => void
   children: React.ReactNode
@@ -330,19 +401,8 @@ function FilterSelect({
       onChange={(event) => onChange(event.target.value)}
       className="h-8 w-full min-w-0 rounded-lg border border-input bg-input/30 px-2 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm"
     >
-      <option value="">{allLabel}</option>
+      {allLabel && <option value="">{allLabel}</option>}
       {children}
     </select>
-  )
-}
-
-// The empty, loading and error states all share this layout.
-function Message({ title, detail, children }: { title: string; detail?: string; children?: React.ReactNode }) {
-  return (
-    <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
-      <p className="font-medium">{title}</p>
-      {detail && <p className="max-w-[50ch] text-sm text-muted-foreground">{detail}</p>}
-      {children}
-    </div>
   )
 }
