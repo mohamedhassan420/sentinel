@@ -125,14 +125,23 @@ export default function LogsPage() {
           variant="ghost"
           disabled={!isFiltered}
           onClick={() => setFilters(NO_FILTERS)}
-          className="col-span-2 md:col-span-3 lg:col-span-1"
         >
           <X aria-hidden />
           Clear filters
         </Button>
       </form>
 
-      <div className="panel mt-4 overflow-hidden">
+      {/* How many lines are listed, said before the list, not after it. */}
+      <p role="status" className="mt-4 min-h-5 text-sm text-muted-foreground">
+        {page !== null &&
+          page.total > 0 &&
+          !error &&
+          (page.logs.length < page.total
+            ? `Showing the newest ${page.logs.length} of ${page.total} log lines. Filter to narrow them down.`
+            : plural(page.total, 'log line'))}
+      </p>
+
+      <div className="panel mt-2 overflow-clip">
         {error ? (
           <Message title="The logs could not be loaded" detail={error}>
             <Button variant="outline" onClick={() => setReload((n) => n + 1)}>
@@ -143,11 +152,7 @@ export default function LogsPage() {
         ) : page === null ? (
           <Message title="Loading logs…" />
         ) : page.total === 0 && isFiltered ? (
-          <Message title="No logs match these filters" detail="Loosen or clear the filters to see more.">
-            <Button variant="outline" onClick={() => setFilters(NO_FILTERS)}>
-              Clear filters
-            </Button>
-          </Message>
+          <Message title="No logs match these filters" detail="Loosen or clear the filters above to see more." />
         ) : page.total === 0 ? (
           <Message
             title="No logs yet"
@@ -164,8 +169,8 @@ export default function LogsPage() {
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="w-20 sm:w-24">Time</TableHead>
                   <TableHead className="hidden w-44 sm:table-cell">Event</TableHead>
-                  <TableHead className="hidden w-32 md:table-cell">Host</TableHead>
-                  <TableHead className="hidden w-24 md:table-cell">User</TableHead>
+                  <TableHead className="hidden w-32 lg:table-cell">Host</TableHead>
+                  <TableHead className="hidden w-24 lg:table-cell">User</TableHead>
                   <TableHead>Message</TableHead>
                   <TableHead className="hidden w-36 lg:table-cell">Scenario</TableHead>
                 </TableRow>
@@ -179,14 +184,6 @@ export default function LogsPage() {
           </div>
         )}
       </div>
-
-      {page !== null && page.total > 0 && !error && (
-        <p className="mt-3 text-sm text-muted-foreground">
-          {page.logs.length < page.total
-            ? `Showing the newest ${page.logs.length} of ${page.total} log lines. Filter to narrow them down.`
-            : plural(page.total, 'log line')}
-        </p>
-      )}
     </div>
   )
 }
@@ -202,15 +199,16 @@ function LogRow({ log }: { log: Log }) {
         <LogEvent log={log} />
         <span className="block text-xs text-muted-foreground">{log.source}</span>
       </TableCell>
-      <TableCell className="hidden truncate md:table-cell">{log.host}</TableCell>
-      <TableCell className="hidden truncate md:table-cell">{log.user}</TableCell>
+      <TableCell className="hidden truncate lg:table-cell">{log.host}</TableCell>
+      <TableCell className="hidden truncate lg:table-cell">{log.user}</TableCell>
       <TableCell className="whitespace-normal">
         {/* Phones have no room for an Event column, so it moves in here. */}
         <span className="mb-1 block sm:hidden">
           <LogEvent log={log} />
         </span>
         <LogMessage message={log.message} />
-        <span className="mt-1 block text-xs text-muted-foreground md:hidden">
+        {/* Until the screen is wide enough for their own columns. */}
+        <span className="mt-1 block text-xs text-muted-foreground lg:hidden">
           {log.user} on {log.host}
           {isAttack && <span className="text-foreground"> ({scenarioLabel(log.scenario)})</span>}
         </span>

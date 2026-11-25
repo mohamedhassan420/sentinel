@@ -15,7 +15,7 @@ const NAV = [
   { section: '', label: 'Dashboard' },
   { section: 'alerts', label: 'Alerts' },
   { section: 'logs', label: 'Logs' },
-  { section: 'rules', label: 'Rules' },
+  { section: 'rules', label: 'Detections' },
 ]
 
 // Which page an address shows, or nothing if the address makes no sense.
@@ -81,7 +81,7 @@ export default function App() {
                 key={item.section}
                 href={`#/${item.section}`}
                 aria-current={item.section === (parts[0] ?? '') ? 'page' : undefined}
-                className="flex items-center border-b-2 border-transparent px-2 pt-0.5 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:underline aria-[current=page]:border-primary aria-[current=page]:font-medium aria-[current=page]:text-foreground"
+                className="flex items-center rounded-sm border-b-2 border-transparent px-2 pt-0.5 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset aria-[current=page]:border-primary aria-[current=page]:font-medium aria-[current=page]:text-foreground"
               >
                 {item.label}
               </a>

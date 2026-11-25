@@ -14,7 +14,7 @@ export default function RulePage({ name }: { name: string }) {
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
       <a href="#/rules" className="text-link inline-flex min-h-11 items-center gap-1.5 text-sm sm:min-h-0">
         <ArrowLeft aria-hidden className="size-4" />
-        Back to rules
+        Back to detections
       </a>
       {error ? (
         <div className="panel mt-4">
@@ -40,7 +40,7 @@ function Explanation({ rule }: { rule: RuleDetail }) {
   const { explanation } = rule
   return (
     <>
-      <h1 className="mt-3 max-w-[30ch] text-3xl font-semibold tracking-tight text-balance">{rule.title}</h1>
+      <h1 className="mt-3 max-w-[40ch] text-2xl font-semibold tracking-tight text-balance">{rule.title}</h1>
       <dl className="mt-4 flex flex-wrap gap-x-10 gap-y-3 text-sm">
         <div>
           <dt className="text-muted-foreground">Severity</dt>
@@ -82,8 +82,15 @@ function Explanation({ rule }: { rule: RuleDetail }) {
               This is the whole rule, exactly as the engine reads it. It is written in Sigma, the open format SOC teams
               use to share detection rules. The lines that start with # are notes for people.
             </p>
-            {/* Shown as plain text, one line at a time, with the notes dimmed. */}
-            <pre className="mt-4 overflow-x-auto rounded-lg border bg-card p-4 font-mono text-xs leading-5">
+            {/* Shown as plain text, one line at a time, with the notes dimmed.
+                Long lines scroll sideways. tabIndex lets a keyboard reach the
+                box to scroll it, and the label tells a screen reader what it is. */}
+            <pre
+              tabIndex={0}
+              role="region"
+              aria-labelledby="file-heading"
+              className="mt-4 overflow-x-auto rounded-lg border bg-card p-4 font-mono text-xs leading-5 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
               {rule.yaml_text
                 .trimEnd()
                 .split('\n')

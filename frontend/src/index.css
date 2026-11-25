@@ -32,6 +32,7 @@
   --accent: #1e2a34; /* hover background (shadcn's name for it) */
   --accent-foreground: #dce4ea;
   --destructive: #e5484d;
+  --error-text: #f08084; /* error messages: the red, lightened to 6:1 contrast on a panel */
 
   /* Severity colours, used from Phase 2 on. Kept apart from the accent so
      teal never gets mistaken for a severity. */
@@ -70,6 +71,7 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-error: var(--error-text);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -93,6 +95,8 @@
   }
   html {
     @apply font-sans;
+    /* Always keeps room for the scrollbar, so short and long pages line up. */
+    scrollbar-gutter: stable;
   }
   body {
     @apply bg-background text-foreground antialiased;
@@ -103,6 +107,12 @@
   /* The one raised surface: every table and box on every page sits in one. */
   .panel {
     @apply rounded-lg border bg-card;
+  }
+
+  /* A table row that is one big link: the link's "after" layer covers the
+     row, so a click anywhere opens it and keyboard focus rings the whole row. */
+  .row-link {
+    @apply font-medium outline-none after:absolute after:inset-0 after:content-[''] hover:text-primary focus-visible:text-primary focus-visible:after:ring-2 focus-visible:after:ring-ring focus-visible:after:ring-inset;
   }
 
   /* The one look for a link in text: the accent colour, with an underline

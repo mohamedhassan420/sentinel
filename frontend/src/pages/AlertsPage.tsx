@@ -42,7 +42,7 @@ export default function AlertsPage({ params }: { params: URLSearchParams }) {
         role="search"
         aria-label="Filter alerts"
         onSubmit={(event) => event.preventDefault()}
-        className="mt-5 grid grid-cols-2 items-end gap-2 sm:grid-cols-[14rem_14rem_auto] sm:justify-start"
+        className="mt-5 grid grid-cols-[1fr_1fr_auto] items-end gap-2 sm:grid-cols-[14rem_14rem_auto] sm:justify-start"
       >
         <Select label="Status" value={status === 'open' ? '' : status} onChange={(v) => setFilter('status', v)}>
           <option value="">Open alerts</option>
@@ -62,14 +62,25 @@ export default function AlertsPage({ params }: { params: URLSearchParams }) {
           variant="ghost"
           disabled={!isFiltered}
           onClick={() => (window.location.hash = '#/alerts')}
-          className="col-span-2 sm:col-span-1"
+          className="max-sm:w-11"
         >
           <X aria-hidden />
-          Clear filters
+          {/* Phones show only the cross; a screen reader still reads the words. */}
+          <span className="max-sm:sr-only">Clear filters</span>
         </Button>
       </form>
 
-      <div className="panel mt-4 overflow-hidden">
+      {/* How many alerts are listed, said before the list, not after it. */}
+      <p role="status" className="mt-4 min-h-5 text-sm text-muted-foreground">
+        {data !== null &&
+          data.total > 0 &&
+          !error &&
+          (data.alerts.length < data.total
+            ? `Showing the newest ${data.alerts.length} of ${data.total} alerts. Filter to narrow them down.`
+            : `${plural(data.total, 'alert')}, newest first`)}
+      </p>
+
+      <div className="panel mt-2 overflow-clip">
         {error ? (
           <Message title="The alerts could not be loaded" detail={error}>
             <Button variant="outline" onClick={reload}>
@@ -80,11 +91,7 @@ export default function AlertsPage({ params }: { params: URLSearchParams }) {
         ) : data === null ? (
           <Message title="Loading alerts…" />
         ) : data.total === 0 && isFiltered ? (
-          <Message title="No alerts match these filters" detail="Loosen or clear the filters to see more.">
-            <Button variant="outline" onClick={() => (window.location.hash = '#/alerts')}>
-              Clear filters
-            </Button>
-          </Message>
+          <Message title="No alerts match these filters" detail="Loosen or clear the filters above to see more." />
         ) : data.total === 0 ? (
           <Message
             title="No open alerts"
@@ -100,14 +107,6 @@ export default function AlertsPage({ params }: { params: URLSearchParams }) {
           </div>
         )}
       </div>
-
-      {data !== null && data.total > 0 && !error && (
-        <p className="mt-3 text-sm text-muted-foreground">
-          {data.alerts.length < data.total
-            ? `Showing the newest ${data.alerts.length} of ${data.total} alerts. Filter to narrow them down.`
-            : `${plural(data.total, 'alert')}, newest first`}
-        </p>
-      )}
     </div>
   )
 }

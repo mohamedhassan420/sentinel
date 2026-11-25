@@ -37,14 +37,16 @@ export default function DashboardPage() {
           )}
         </div>
       ) : (
-        <>
+        // One column of panels. On phones the ATT&CK panel moves to the end
+        // (see Tactics), so the alerts are not buried under it.
+        <div className="mt-6 flex flex-col gap-4">
           {/* A refresh that failed keeps the last numbers on screen and says so. */}
           {error && (
-            <p role="alert" className="mt-4 text-sm text-destructive">
+            <p role="alert" className="text-sm text-error">
               These numbers could not be refreshed. {error}
             </p>
           )}
-          <div className="mt-6 grid gap-4 lg:grid-cols-3">
+          <div className="grid gap-4 lg:grid-cols-3">
             <div
               aria-busy={loading}
               className={`lg:col-span-2 ${loading ? 'opacity-60 transition-opacity' : 'transition-opacity'}`}
@@ -54,7 +56,7 @@ export default function DashboardPage() {
             <RunScenario onDone={reload} />
           </div>
           <Tactics board={data[0]} />
-          <section aria-labelledby="newest-heading" className="panel mt-4 overflow-hidden">
+          <section aria-labelledby="newest-heading" className="panel overflow-clip">
             <div className="flex flex-wrap items-baseline justify-between gap-x-4 px-5 pt-5 pb-3">
               <h2 id="newest-heading" className="font-medium">
                 Newest open alerts
@@ -75,7 +77,7 @@ export default function DashboardPage() {
               </div>
             )}
           </section>
-        </>
+        </div>
       )}
     </div>
   )
@@ -165,7 +167,7 @@ function Tactics({ board }: { board: Dashboard }) {
     alerts === 0 ? 'bg-heat-0' : alerts / most > 2 / 3 ? 'bg-heat-3' : alerts / most > 1 / 3 ? 'bg-heat-2' : 'bg-heat-1'
 
   return (
-    <section aria-labelledby="tactics-heading" className="panel mt-4 p-5">
+    <section aria-labelledby="tactics-heading" className="panel p-5 max-sm:order-1">
       <h2 id="tactics-heading" className="font-medium">
         ATT&amp;CK tactics the alerts point to
       </h2>
@@ -208,7 +210,8 @@ function Tactics({ board }: { board: Dashboard }) {
           None yet. A technique is the method an attacker uses to reach a tactic.
         </p>
       ) : (
-        <ul className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-sm">
+        // Two tight columns on phones, one flowing line of links on wider screens.
+        <ul className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:flex sm:flex-wrap sm:gap-x-6 sm:text-sm">
           {board.techniques.map((technique) => (
             <li key={technique.id} className="inline-flex min-h-11 items-center gap-2 sm:min-h-7">
               <TechniqueLink id={technique.id} name={technique.name} roomy />

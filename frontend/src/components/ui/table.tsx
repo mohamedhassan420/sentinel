@@ -5,7 +5,7 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
     <div
       data-slot="table-container"
-      className="relative w-full overflow-x-auto"
+      className="relative w-full overflow-x-clip"
     >
       <table
         data-slot="table"
@@ -20,7 +20,12 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   return (
     <thead
       data-slot="table-header"
-      className={cn("[&_tr]:border-b", className)}
+      // The headings stay at the top of the screen while a long table scrolls.
+      // The line under them is a shadow, because a border would scroll away.
+      className={cn(
+        "sticky top-0 z-10 bg-card [&_th]:shadow-[inset_0_-1px_0_var(--border)]",
+        className
+      )}
       {...props}
     />
   )

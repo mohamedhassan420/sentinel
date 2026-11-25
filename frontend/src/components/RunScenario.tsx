@@ -54,7 +54,7 @@ export function RunScenario({ onDone }: { onDone: () => void }) {
         </Select>
       </div>
       {/* One line that changes: what the scenario will write, or what the last run did. */}
-      <p aria-live="polite" className={`mt-3 mb-4 text-sm ${error ? 'text-destructive' : 'text-muted-foreground'}`}>
+      <p aria-live="polite" className={`mt-3 mb-4 text-sm ${error ? 'text-error' : 'text-muted-foreground'}`}>
         {error ? (
           error
         ) : result ? (

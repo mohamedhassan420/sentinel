@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ChevronDown } from 'lucide-react'
 
 import type { Log } from '@/lib/api'
 import { eventName } from '@/lib/display'
@@ -24,9 +25,16 @@ export function LogMessage({ message }: { message: string }) {
       onClick={() => setExpanded(!expanded)}
       aria-expanded={expanded}
       title={expanded ? 'Show less' : 'Show the full message'}
-      className="block w-full cursor-pointer rounded-sm py-0.5 text-left font-mono text-xs leading-5 text-foreground/85 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="group flex w-full cursor-pointer items-start gap-2 rounded-sm py-0.5 text-left font-mono text-xs leading-5 text-foreground/85 outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <span className={`wrap-anywhere ${expanded ? 'block whitespace-pre-wrap' : 'line-clamp-2'}`}>{message}</span>
+      <span className={`min-w-0 flex-1 wrap-anywhere ${expanded ? 'whitespace-pre-wrap' : 'line-clamp-2'}`}>
+        {message}
+      </span>
+      {/* The arrow says the message opens, and flips once it has. */}
+      <ChevronDown
+        aria-hidden
+        className={`mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform group-hover:text-foreground motion-reduce:transition-none ${expanded ? 'rotate-180' : ''}`}
+      />
     </button>
   )
 }
