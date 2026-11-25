@@ -4,7 +4,7 @@
 
 An AI-assisted SOC triage tool. It simulates attacks as log lines, detects them with Sigma-style rules mapped to MITRE ATT&CK, and turns the alerts into incident timelines and reports.
 
-**Status: Phase 1 of 6.** The app runs, the brute force scenario writes logs, and the Logs page shows them with filters. Detection, AI triage, incidents and reports come in later phases. The full plan is in [docs/PLAN.md](docs/PLAN.md).
+**Status: Phase 2 of 6.** The simulator writes five attacks and a full attack chain, ten Sigma-style rules detect them, and each match becomes an alert tagged with its MITRE ATT&CK technique. The dashboard, AI triage, incidents and reports come in later phases. The full plan is in [docs/PLAN.md](docs/PLAN.md).
 
 Nothing here attacks anything. The simulator only writes text log lines into a local database.
 
@@ -16,9 +16,32 @@ You need [Docker Desktop](https://www.docker.com/products/docker-desktop/) runni
 docker compose up --build
 ```
 
-Then open http://localhost:8000 and press **Run brute force**. The API's own documentation page is at http://localhost:8000/docs.
+Then open http://localhost:8000, pick a scenario and press **Run scenario**. The new log lines appear on the Logs page and the alerts they raise on the Alerts page. The API's own documentation page is at http://localhost:8000/docs.
 
-To stop, press Ctrl+C in that terminal. To also delete the stored logs, run `docker compose down -v`.
+To stop, press Ctrl+C in that terminal. To also delete the stored logs and alerts, run `docker compose down -v`.
+
+## Detection rules
+
+The rules are YAML files in [backend/rules](backend/rules), written in the [Sigma](https://sigmahq.io/) format. A small engine in [backend/engine/detection.py](backend/engine/detection.py) reads them and checks every new log.
+
+| Scenario | Rule | Severity | ATT&CK |
+| --- | --- | --- | --- |
+| Brute force login | Many Failed Logons For One Account | Medium | T1110 |
+| | Remote Desktop Logon From A Public IP Address | High | T1133, T1078 |
+| Phishing | Macro-Enabled Office Attachment From An External Sender | Medium | T1566.001 |
+| | Office Application Starts A Command Shell | High | T1204.002 |
+| Malicious PowerShell | PowerShell Started With An Encoded Command | High | T1059.001, T1027.010 |
+| | PowerShell Script Downloads From The Web | Medium | T1059.001, T1105 |
+| Privilege escalation | Local User Account Created | Low | T1136.001 |
+| | User Added To The Local Administrators Group | High | T1098 |
+| Data exfiltration | FTP Connection To A Public IP Address | Medium | T1048.003 |
+| | Large Upload To A Public IP Address | High | T1048 |
+
+The full attack chain runs phishing, PowerShell, privilege escalation and exfiltration on one machine and raises nine alerts.
+
+Every rule is tested both ways: logs that must fire it, and harmless look-alikes that must not. Another test runs 300 random half hours of normal office activity through all ten rules and expects no alerts.
+
+The engine supports the parts of Sigma these rules need: field checks with `contains`, `startswith`, `endswith`, `gte` and `cidr`, conditions with `and`, `or` and `not`, and `event_count` correlations (a count over a time window). The email rule uses a log source name of its own, because Sigma has no standard one for mail gateways.
 
 ## Develop
 
@@ -46,8 +69,10 @@ The frontend dev server on http://localhost:5173 passes `/api` requests to the b
 ```
 backend/
   main.py         the API
-  models.py       the common log format
+  models.py       the database tables: logs and alerts
   simulator/      background noise and one file per attack scenario
+  rules/          the detection rules, one Sigma-style YAML file each
+  engine/         the rule engine that checks logs against the rules
   tests/
 frontend/         the React dashboard
 docs/             plan, decisions and learning notes
@@ -58,6 +83,10 @@ docs/             plan, decisions and learning notes
 Ideas outside the current phase are parked here until Phase 6 is done.
 
 - A "Clear logs" button, so a demo can start from an empty table without `docker compose down -v`.
+- An off-hours check. The plan has the exfiltration happen at 3 AM, but the simulator stamps every scenario "just now" so new lines appear at the top. The upload is detected by its size, whatever the hour.
+- A rule for "a successful logon straight after a burst of failures". It needs Sigma's `temporal` correlation type, which the engine does not support yet.
+- Detection over a sliding time window. Today the rules check each new batch of logs on its own, so a burst split across two batches would be missed.
+- Run the rules through `sigma-cli` to convert them into Splunk or Elastic queries (the plan's stretch goal).
 - Paging through logs older than the newest 200.
 - `npm audit` reports 4 moderate issues in `minimatch`, pulled in by the `shadcn` command-line tool. It is used only while building and is not shipped to the browser. Recheck in the Phase 6 security scan.
 - Starlette's test client now prefers `httpx2` over `httpx` (a deprecation warning in the test run). Switch once that is settled.
