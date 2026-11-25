@@ -4,7 +4,7 @@
 
 An AI-assisted SOC triage tool. It simulates attacks as log lines, detects them with Sigma-style rules mapped to MITRE ATT&CK, and turns the alerts into incident timelines and reports.
 
-**Status: Phase 2 of 6.** The simulator writes five attacks and a full attack chain, ten Sigma-style rules detect them, and each match becomes an alert tagged with its MITRE ATT&CK technique. The dashboard, AI triage, incidents and reports come in later phases. The full plan is in [docs/PLAN.md](docs/PLAN.md).
+**Status: Phase 3 of 6.** The simulator writes five attacks and a full attack chain, ten Sigma-style rules detect them, and each match becomes an alert tagged with its MITRE ATT&CK technique. A dashboard shows what is waiting, the alert queue tracks each alert from New to Closed, and every rule has a plain-English Explain page. AI triage, incidents and reports come in later phases (the dashboard's count of open incidents arrives with them). The full plan is in [docs/PLAN.md](docs/PLAN.md).
 
 Nothing here attacks anything. The simulator only writes text log lines into a local database.
 
@@ -16,7 +16,12 @@ You need [Docker Desktop](https://www.docker.com/products/docker-desktop/) runni
 docker compose up --build
 ```
 
-Then open http://localhost:8000, pick a scenario and press **Run scenario**. The new log lines appear on the Logs page and the alerts they raise on the Alerts page. The API's own documentation page is at http://localhost:8000/docs.
+Then open http://localhost:8000. The API's own documentation page is at http://localhost:8000/docs.
+
+1. On the **Dashboard**, pick a scenario and press **Run scenario**. The open-alert counts and the ATT&CK strip update.
+2. Open **Alerts** and select an alert. Its page shows why the rule fired, the log lines that are the evidence, and a status you can change: New, In progress, Closed as true positive or Closed as false positive.
+3. Select **Read how this rule works** for the rule's Explain page: what the attack is, what the log shows, why the rule catches it, and the Security+ topic it connects to. **Rules** lists all ten.
+4. **Logs** shows every line the simulator wrote, attack and background alike.
 
 To stop, press Ctrl+C in that terminal. To also delete the stored logs and alerts, run `docker compose down -v`.
 
@@ -38,6 +43,8 @@ The rules are YAML files in [backend/rules](backend/rules), written in the [Sigm
 | | Large Upload To A Public IP Address | High | T1048 |
 
 The full attack chain runs phishing, PowerShell, privilege escalation and exfiltration on one machine and raises nine alerts.
+
+Each rule has an Explain page in the app. Its text is a file of the same name in [backend/explain](backend/explain), and the app will not start if a rule is missing one.
 
 Every rule is tested both ways: logs that must fire it, and harmless look-alikes that must not. Another test runs 300 random half hours of normal office activity through all ten rules and expects no alerts.
 
@@ -69,9 +76,10 @@ The frontend dev server on http://localhost:5173 passes `/api` requests to the b
 ```
 backend/
   main.py         the API
-  models.py       the database tables: logs and alerts
+  models.py       the database tables (logs and alerts) and the shapes of the API's answers
   simulator/      background noise and one file per attack scenario
   rules/          the detection rules, one Sigma-style YAML file each
+  explain/        the Explain mode text, one file per rule
   engine/         the rule engine that checks logs against the rules
   tests/
 frontend/         the React dashboard
@@ -82,6 +90,12 @@ docs/             plan, decisions and learning notes
 
 Ideas outside the current phase are parked here until Phase 6 is done.
 
+- A note and an analyst's name on each status change, so the queue records who decided what and why.
+- Sorting the alert queue by severity as well as by time.
+- A chart of alerts over time on the dashboard. The plan's chart library (Recharts) is not installed yet: today's dashboard is counts and a strip, which plain HTML and CSS draw.
+- A rule for password spraying (one password tried against many accounts). The brute force rule counts per account, so spraying slips under it.
+- Link-preview tags (Open Graph) for when the site goes public in Phase 6.
+- The High and Medium severity colours (orange and yellow) are close. They always carry their word, but consider moving them further apart in the Phase 6 UI review.
 - A "Clear logs" button, so a demo can start from an empty table without `docker compose down -v`.
 - An off-hours check. The plan has the exfiltration happen at 3 AM, but the simulator stamps every scenario "just now" so new lines appear at the top. The upload is detected by its size, whatever the hour.
 - A rule for "a successful logon straight after a burst of failures". It needs Sigma's `temporal` correlation type, which the engine does not support yet.

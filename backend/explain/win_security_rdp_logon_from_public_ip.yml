@@ -1,0 +1,29 @@
+attack: |
+  Remote Desktop (RDP) lets someone use a Windows machine from far away as
+  if they were sitting at it. If a machine accepts Remote Desktop straight
+  from the internet, anyone in the world can try to log on to it. An
+  attacker who has guessed, bought or stolen a password simply logs in. No
+  malware is needed, and afterwards they look like the real user.
+log_shows: |
+  Event 4624 is a successful logon. LogonType says how it was made: 10 means
+  Remote Desktop. IpAddress says where it came from.
+
+  Company machines use private addresses, which start with 10., 172.16 to
+  172.31, or 192.168. Any other address is somewhere on the public internet.
+why: |
+  The rule looks for event 4624 with LogonType 10, then sets aside the
+  logons that came from a private address. What is left is a Remote Desktop
+  session from outside the company. Staff working from home are not caught,
+  because they connect through the VPN first and arrive with an internal
+  address.
+
+  On its own this alert is serious. Straight after a "Many Failed Logons"
+  alert for the same account, it means the guessing worked.
+security_plus:
+  topic: Secure remote access
+  text: |
+    Security+ expects you to know that remote administration services such
+    as RDP (port 3389) should never face the internet. Remote access goes
+    through a VPN or a jump server, with multi-factor authentication. It is
+    also a lesson in attack surface: every service exposed to the internet
+    is a door somebody will try.

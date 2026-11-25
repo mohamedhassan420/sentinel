@@ -1,4 +1,5 @@
-"""The database tables: logs and the alerts raised from them.
+"""The database tables (logs and the alerts raised from them) and the
+shapes of the API's answers.
 
 Real SOC tools receive logs from many sources (Windows, Sysmon, firewalls...)
 and "normalise" them into one shape so the same rules can read them all.
@@ -6,9 +7,22 @@ This is Sentinel's shape: every simulated log line becomes one Log row.
 """
 
 from datetime import datetime, timezone
+from typing import Literal, get_args
 
 from pydantic import field_serializer
 from sqlmodel import JSON, Column, Field, SQLModel
+
+from backend.explain import Explanation
+
+Severity = Literal["Low", "Medium", "High", "Critical"]
+
+# The life of an alert. An analyst picks it up ("In progress"), investigates,
+# and closes it one of two ways: it was a real attack (true positive) or it
+# was harmless activity the rule mistook for one (false positive).
+Status = Literal["New", "In progress", "Closed as true positive", "Closed as false positive"]
+STATUSES = get_args(Status)
+OPEN_STATUSES = STATUSES[:2]  # still waiting for a decision
+FALSE_POSITIVE = STATUSES[3]
 
 
 def _as_utc(value: datetime) -> str:
@@ -50,7 +64,7 @@ class Alert(SQLModel, table=True):
     host: str = Field(index=True)
     user: str = Field(index=True)
     log_ids: list[int] = Field(sa_column=Column(JSON, nullable=False))  # the evidence
-    status: str = "New"  # Phase 3 adds the other statuses
+    status: str = STATUSES[0]  # one of STATUSES; every alert starts as "New"
 
     _time_as_utc = field_serializer("time")(_as_utc)
 
@@ -67,3 +81,63 @@ class AlertPage(SQLModel):
 
     total: int
     alerts: list[Alert]
+
+
+class StatusChange(SQLModel):
+    """What PATCH /api/alerts/{id} accepts. Anything but the four statuses is rejected."""
+
+    status: Status
+
+
+class Technique(SQLModel):
+    id: str  # e.g. "T1110"
+    name: str  # e.g. "Brute Force"
+
+
+class RuleInfo(SQLModel):
+    """A detection rule as the app shows it."""
+
+    name: str  # the file name without ".yml"; alerts store it as rule_id
+    title: str
+    description: str
+    severity: Severity
+    tactics: list[str]
+    techniques: list[Technique]
+    log_source: str  # which kind of log the rule reads, e.g. "Sysmon event 1"
+    false_positives: list[str]
+
+
+class RuleDetail(RuleInfo):
+    """What GET /api/rules/{name} returns: everything on the Explain page."""
+
+    yaml_text: str  # the rule file exactly as written
+    explanation: Explanation
+
+
+class AlertDetail(SQLModel):
+    """What GET /api/alerts/{id} returns: the alert, the logs that made the
+    rule fire, and the rule itself."""
+
+    alert: Alert
+    logs: list[Log]
+    rule: RuleInfo | None  # None if the rule file has since been removed
+
+
+class TacticCount(SQLModel):
+    tactic: str
+    alerts: int
+
+
+class TechniqueCount(Technique):
+    alerts: int
+
+
+class Dashboard(SQLModel):
+    """What GET /api/dashboard returns: the numbers on the home page."""
+
+    open_by_severity: dict[Severity, int]  # alerts still waiting for a decision
+    by_status: dict[Status, int]
+    # How many alerts point to each tactic and technique. Alerts closed as
+    # false positives are left out: nothing really happened there.
+    tactics: list[TacticCount]  # all 14 tactics, in the order an attack moves
+    techniques: list[TechniqueCount]  # only the techniques seen

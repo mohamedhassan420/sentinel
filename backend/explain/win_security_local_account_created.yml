@@ -1,0 +1,29 @@
+attack: |
+  After getting in, attackers want a way to come back. The password they
+  stole may be changed tomorrow. So they create an account of their own,
+  often with a dull name such as svc_update that looks as if it belongs.
+  This is called persistence: keeping access even after the first break-in
+  is cleaned up.
+log_shows: |
+  Event 4720 is written when a user account is created. SubjectUserName is
+  who created it. TargetUserName is the new account.
+
+  TargetDomainName shows where the account lives. When it is the machine's
+  own name, the account is local: it exists on that one machine only.
+why: |
+  The rule fires on any event 4720 unless the machine's name starts with
+  DC-. Domain controllers are the servers where company accounts are
+  properly created, so there the event is routine. On a workstation it is
+  rare.
+
+  The level is low because IT does sometimes create a local account. It
+  becomes serious when the next alert shows that same account being made an
+  administrator.
+security_plus:
+  topic: Account management
+  text: |
+    Security+ covers the account lifecycle: accounts are created through an
+    approved process (provisioning), reviewed regularly and removed when
+    they are no longer needed. An account nobody asked for is a finding in
+    any audit. An account review and this rule look for the same thing from
+    opposite ends.

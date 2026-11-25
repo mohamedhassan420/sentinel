@@ -1,0 +1,29 @@
+attack: |
+  Stealing data means moving a lot of it. Customer records, finance files
+  and mailboxes run to gigabytes. However the attacker hides the transfer,
+  the volume is hard to disguise: a workstation that normally sends a few
+  megabytes suddenly sends thousands.
+log_shows: |
+  A firewall sits between the company network and the internet. It logs
+  each connection when it closes: the source and destination addresses, the
+  port, and the bytes sent and received.
+
+  The attack's line shows bytes_sent of about 2,000,000,000 (2 GB) against a
+  few tens of thousands of bytes received. That lopsided shape, a great
+  deal out and almost nothing back, is an upload.
+why: |
+  The rule fires when one connection sends 1 GB or more, unless it goes to
+  a private address (a big copy to an internal server is a backup). It
+  ignores the port and the program completely, so it would catch the same
+  theft over HTTPS or any other channel.
+
+  The trade-off is timing. The firewall writes its line when the connection
+  closes, so the alert arrives after the data has gone.
+security_plus:
+  topic: Data loss prevention and network monitoring
+  text: |
+    Security+ covers data loss prevention (DLP) tools, which watch for
+    sensitive data leaving, and baselining: knowing what normal traffic
+    looks like so the abnormal stands out. This rule is a crude baseline
+    with one fixed number. A real SOC compares each machine with its own
+    history.

@@ -65,6 +65,24 @@ TACTICS = {
 # A technique tag looks like attack.t1110, or attack.t1566.001 for a sub-technique.
 TECHNIQUE_TAG = re.compile(r"attack\.(t\d{4}(\.\d{3})?)")
 
+# MITRE's names for the techniques the rules point to, so the app can show
+# "T1110 Brute Force" and not just a code. A rule that uses a new technique
+# needs a line here first.
+TECHNIQUES = {
+    "T1027.010": "Command Obfuscation",
+    "T1048": "Exfiltration Over Alternative Protocol",
+    "T1048.003": "Exfiltration Over Unencrypted Non-C2 Protocol",
+    "T1059.001": "PowerShell",
+    "T1078": "Valid Accounts",
+    "T1098": "Account Manipulation",
+    "T1105": "Ingress Tool Transfer",
+    "T1110": "Brute Force",
+    "T1133": "External Remote Services",
+    "T1136.001": "Create Account: Local Account",
+    "T1204.002": "User Execution: Malicious File",
+    "T1566.001": "Spearphishing Attachment",
+}
+
 TIME_UNITS = {"s": "seconds", "m": "minutes", "h": "hours", "d": "days"}
 
 
@@ -135,6 +153,8 @@ class Rule:
     event_id: int | None  # and which event ID, or None for any
     selections: dict[str, list[Check]]  # name -> checks that must ALL pass
     condition: ast.expr  # how the selections combine, as a parsed tree
+    false_positives: list[str]  # harmless things known to set the rule off
+    yaml_text: str  # the rule file as written, shown on its Explain page
     threshold: Threshold | None = None
 
 
@@ -153,13 +173,13 @@ def load_rules(folder: Path = RULES_DIR) -> list[Rule]:
 
 def load_rule(path: Path) -> Rule:
     try:
-        documents = list(yaml.safe_load_all(path.read_text(encoding="utf-8")))
-        return _build_rule(path.stem, documents)
+        yaml_text = path.read_text(encoding="utf-8")
+        return _build_rule(path.stem, list(yaml.safe_load_all(yaml_text)), yaml_text)
     except Exception as problem:
         raise ValueError(f"Rule file {path.name} is not valid: {problem!r}") from problem
 
 
-def _build_rule(name: str, documents: list[dict]) -> Rule:
+def _build_rule(name: str, documents: list[dict], yaml_text: str) -> Rule:
     base = documents[0]
     # A threshold rule has a second YAML document holding a `correlation`
     # block. Its title, level and tags are the ones that describe the alert.
@@ -187,6 +207,8 @@ def _build_rule(name: str, documents: list[dict]) -> Rule:
         event_id=event_id,
         selections=selections,
         condition=_parse_condition(condition, selections),
+        false_positives=about.get("falsepositives", []),
+        yaml_text=yaml_text,
         threshold=_parse_threshold(correlation["correlation"], base) if correlation else None,
     )
 
@@ -233,7 +255,9 @@ def _parse_tags(tags: list[str]) -> tuple[list[str], list[str]]:
     for tag in tags:
         technique = TECHNIQUE_TAG.fullmatch(tag)
         if technique:
-            techniques.append(technique.group(1).upper())
+            technique_id = technique.group(1).upper()
+            _lookup(TECHNIQUES, technique_id, "ATT&CK technique")
+            techniques.append(technique_id)
         else:
             tactics.append(_lookup(TACTICS, tag.removeprefix("attack."), "ATT&CK tactic"))
     if not tactics or not techniques:

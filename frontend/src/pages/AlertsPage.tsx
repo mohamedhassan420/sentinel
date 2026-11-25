@@ -1,153 +1,113 @@
-import { useEffect, useState } from 'react'
-import { RotateCw } from 'lucide-react'
+import { RotateCw, X } from 'lucide-react'
 
+import { AlertTable } from '@/components/AlertTable'
 import { Message } from '@/components/Message'
-import { Timestamp } from '@/components/Timestamp'
+import { Select } from '@/components/Select'
 import { Button } from '@/components/ui/button'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { getAlerts, type Alert, type AlertPage, type Severity } from '@/lib/api'
+import { getAlerts, OPEN_STATUSES, SEVERITIES, STATUSES, type Status } from '@/lib/api'
+import { plural } from '@/lib/display'
+import { useLoad } from '@/lib/hooks'
 
-// Each severity has its own colour, used for a dot beside the word and a
-// stripe down the row's left edge. The word is always shown too, so nothing
-// depends on telling colours apart.
-const SEVERITY_STYLE: Record<Severity, { dot: string; edge: string }> = {
-  Low: { dot: 'bg-severity-low', edge: 'border-l-severity-low' },
-  Medium: { dot: 'bg-severity-medium', edge: 'border-l-severity-medium' },
-  High: { dot: 'bg-severity-high', edge: 'border-l-severity-high' },
-  Critical: { dot: 'bg-severity-critical', edge: 'border-l-severity-critical' },
-}
+// The alert queue. The filters live in the address (#/alerts?severity=High),
+// so the dashboard can link straight to a filtered queue and the browser's
+// Back button undoes a filter change.
+export default function AlertsPage({ params }: { params: URLSearchParams }) {
+  // Anything in the address that is not a real status or severity is ignored.
+  const status = [...STATUSES, 'all'].find((value) => value === params.get('status')) ?? 'open'
+  const severity = SEVERITIES.find((value) => value === params.get('severity')) ?? ''
+  const isFiltered = status !== 'open' || severity !== ''
 
-// "T1566.001" -> https://attack.mitre.org/techniques/T1566/001/
-function techniqueUrl(technique: string) {
-  return `https://attack.mitre.org/techniques/${technique.replace('.', '/')}/`
-}
+  const statuses = status === 'open' ? OPEN_STATUSES : status === 'all' ? [] : [status as Status]
+  const { data, error, loading, reload } = useLoad(
+    (signal) => getAlerts({ statuses, severity: severity || undefined }, signal),
+    `${status}|${severity}`,
+  )
 
-export default function AlertsPage() {
-  const [page, setPage] = useState<AlertPage | null>(null)
-  const [error, setError] = useState('')
-  // Adding 1 to this number makes the effect below fetch again.
-  const [reload, setReload] = useState(0)
-
-  useEffect(() => {
-    const controller = new AbortController()
-    getAlerts(controller.signal)
-      .then((result) => {
-        setPage(result)
-        setError('')
-      })
-      .catch((problem: Error) => {
-        if (problem.name !== 'AbortError') setError(problem.message)
-      })
-    return () => controller.abort()
-  }, [reload])
+  function setFilter(name: 'status' | 'severity', value: string) {
+    const next = new URLSearchParams(params)
+    if (value) next.set(name, value)
+    else next.delete(name)
+    window.location.hash = `#/alerts${next.size ? `?${next}` : ''}`
+  }
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
       <h1 className="text-2xl font-semibold tracking-tight">Alerts</h1>
       <p className="mt-1 max-w-[65ch] text-sm text-muted-foreground">
-        An alert is a detection rule saying these logs look like an attack and a person should check. Each one names
-        the MITRE ATT&amp;CK technique it points to.
+        An alert is a detection rule saying these logs look like an attack and a person should check. Open one to see
+        its evidence and decide whether it is real.
       </p>
 
-      <div className="mt-6 overflow-hidden rounded-lg border bg-card">
+      <form
+        role="search"
+        aria-label="Filter alerts"
+        onSubmit={(event) => event.preventDefault()}
+        className="mt-5 grid grid-cols-2 items-end gap-2 sm:grid-cols-[14rem_14rem_auto] sm:justify-start"
+      >
+        <Select label="Status" value={status === 'open' ? '' : status} onChange={(v) => setFilter('status', v)}>
+          <option value="">Open alerts</option>
+          {STATUSES.map((value) => (
+            <option key={value}>{value}</option>
+          ))}
+          <option value="all">All alerts</option>
+        </Select>
+        <Select label="Severity" value={severity} onChange={(v) => setFilter('severity', v)}>
+          <option value="">All severities</option>
+          {SEVERITIES.map((value) => (
+            <option key={value}>{value}</option>
+          ))}
+        </Select>
+        <Button
+          type="button"
+          variant="ghost"
+          disabled={!isFiltered}
+          onClick={() => (window.location.hash = '#/alerts')}
+          className="col-span-2 sm:col-span-1"
+        >
+          <X aria-hidden />
+          Clear filters
+        </Button>
+      </form>
+
+      <div className="panel mt-4 overflow-hidden">
         {error ? (
           <Message title="The alerts could not be loaded" detail={error}>
-            <Button variant="outline" onClick={() => setReload((n) => n + 1)}>
+            <Button variant="outline" onClick={reload}>
               <RotateCw aria-hidden />
               Try again
             </Button>
           </Message>
-        ) : page === null ? (
+        ) : data === null ? (
           <Message title="Loading alerts…" />
-        ) : page.total === 0 ? (
+        ) : data.total === 0 && isFiltered ? (
+          <Message title="No alerts match these filters" detail="Loosen or clear the filters to see more.">
+            <Button variant="outline" onClick={() => (window.location.hash = '#/alerts')}>
+              Clear filters
+            </Button>
+          </Message>
+        ) : data.total === 0 ? (
           <Message
-            title="No alerts yet"
-            detail="Alerts appear when the detection rules match new logs. Run a scenario on the Logs page to write some."
+            title="No open alerts"
+            detail="Alerts appear when the detection rules match new logs. Run a scenario on the dashboard to write some, or change the status filter to see closed alerts."
           >
             <Button asChild>
-              <a href="#/">Go to Logs</a>
+              <a href="#/">Go to the dashboard</a>
             </Button>
           </Message>
         ) : (
-          <Table className="table-fixed">
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead className="w-20 pl-3 sm:w-24">Time</TableHead>
-                <TableHead className="hidden w-24 sm:table-cell">Severity</TableHead>
-                <TableHead>Alert</TableHead>
-                <TableHead className="hidden w-56 lg:table-cell">ATT&amp;CK</TableHead>
-                <TableHead className="hidden w-32 md:table-cell">Host</TableHead>
-                <TableHead className="hidden w-24 md:table-cell">User</TableHead>
-                <TableHead className="hidden w-20 text-right sm:table-cell">Evidence</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {page.alerts.map((alert) => (
-                <AlertRow key={alert.id} alert={alert} />
-              ))}
-            </TableBody>
-          </Table>
+          <div aria-busy={loading} className={loading ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
+            <AlertTable alerts={data.alerts} />
+          </div>
         )}
       </div>
 
-      {page !== null && page.total > 0 && !error && (
+      {data !== null && data.total > 0 && !error && (
         <p className="mt-3 text-sm text-muted-foreground">
-          {page.alerts.length < page.total
-            ? `Showing the newest ${page.alerts.length} of ${page.total} alerts.`
-            : `${page.total} ${page.total === 1 ? 'alert' : 'alerts'}, newest first`}
+          {data.alerts.length < data.total
+            ? `Showing the newest ${data.alerts.length} of ${data.total} alerts. Filter to narrow them down.`
+            : `${plural(data.total, 'alert')}, newest first`}
         </p>
       )}
     </div>
-  )
-}
-
-function AlertRow({ alert }: { alert: Alert }) {
-  const style = SEVERITY_STYLE[alert.severity]
-  const severity = (
-    <span className="inline-flex items-center gap-2 font-medium">
-      <span aria-hidden className={`size-2 rounded-full ${style.dot}`} />
-      {alert.severity}
-    </span>
-  )
-  const techniques = (
-    <>
-      {alert.attack_techniques.map((technique) => (
-        <a
-          key={technique}
-          href={techniqueUrl(technique)}
-          target="_blank"
-          rel="noreferrer"
-          title={`Read about ${technique} on attack.mitre.org`}
-          className="mr-2 rounded-sm tabular-nums text-primary underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          {technique}
-        </a>
-      ))}
-      <span className="block text-xs text-muted-foreground">{alert.attack_tactics.join(', ')}</span>
-    </>
-  )
-  const evidence = `${alert.log_ids.length} ${alert.log_ids.length === 1 ? 'log' : 'logs'}`
-
-  return (
-    <TableRow className="[&>td]:align-top">
-      <TableCell className={`border-l-2 pl-2.5 tabular-nums ${style.edge}`}>
-        <Timestamp iso={alert.time} />
-      </TableCell>
-      <TableCell className="hidden sm:table-cell">{severity}</TableCell>
-      <TableCell className="whitespace-normal">
-        {/* Phones have no room for the other columns, so their content moves in here. */}
-        <span className="mb-1 block text-xs sm:hidden">{severity}</span>
-        {alert.title}
-        <span className="mt-1 block lg:hidden">{techniques}</span>
-        <span className="mt-1 block text-xs text-muted-foreground md:hidden">
-          {alert.user} on {alert.host}
-          <span className="sm:hidden">, {evidence}</span>
-        </span>
-      </TableCell>
-      <TableCell className="hidden whitespace-normal lg:table-cell">{techniques}</TableCell>
-      <TableCell className="hidden truncate md:table-cell">{alert.host}</TableCell>
-      <TableCell className="hidden truncate md:table-cell">{alert.user}</TableCell>
-      <TableCell className="hidden text-right tabular-nums text-muted-foreground sm:table-cell">{evidence}</TableCell>
-    </TableRow>
   )
 }

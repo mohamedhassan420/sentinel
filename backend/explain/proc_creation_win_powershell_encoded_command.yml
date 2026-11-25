@@ -1,0 +1,30 @@
+attack: |
+  PowerShell is the scripting tool built into every Windows machine, and
+  administrators rely on it. Attackers like it for the same reason: it is
+  already there, so they need not bring a program of their own. This is
+  called living off the land. To hide what a script does, they pass it as
+  Base64, a way of writing any data using only letters and digits.
+log_shows: |
+  Sysmon event 1 records PowerShell starting, with its whole command line.
+  The attack's line carries three options: -NoProfile, -WindowStyle Hidden
+  (no window appears on screen) and -EncodedCommand followed by a long run
+  of letters.
+
+  That run of letters is the script. Anyone can decode it, and decoded it
+  reads: download update.ps1 from an outside address.
+why: |
+  The rule needs two things at once: the program is powershell.exe or
+  pwsh.exe, and the command line contains the encoded-command option.
+  PowerShell accepts shortened spellings such as -enc and -e, so the rule
+  lists each of them.
+
+  It does not try to decode the script. Someone asking for a hidden,
+  encoded script is reason enough for a person to look.
+security_plus:
+  topic: Scripting and obfuscation
+  text: |
+    Security+ expects you to recognise malicious PowerShell and to know that
+    encoding is not encryption: Base64 hides nothing from anyone who decodes
+    it. Obfuscation is the general word for making code hard to read. The
+    matching defences are script block logging, application allow lists and
+    PowerShell's constrained language mode.
