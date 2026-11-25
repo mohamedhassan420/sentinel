@@ -1,0 +1,39 @@
+title: PowerShell Started With An Encoded Command
+id: 757e5aa6-f723-4a1c-bfab-250b32d4785b
+status: experimental
+description: |
+  PowerShell was started with -EncodedCommand, which takes the script as
+  Base64 text instead of readable words. Encoding is not encryption (anyone
+  can decode it), but it hides what the script does from a quick look at the
+  command line, which is why attackers like it.
+references:
+  - https://attack.mitre.org/techniques/T1059/001/
+  - https://attack.mitre.org/techniques/T1027/010/
+author: Mohamed Hassan
+date: 2026-11-25
+tags:
+  - attack.execution
+  - attack.t1059.001
+  - attack.defense_evasion
+  - attack.t1027.010
+logsource:
+  product: windows
+  category: process_creation
+detection:
+  selection_powershell:
+    Image|endswith:
+      - '\powershell.exe'
+      - '\pwsh.exe'
+  # PowerShell accepts any shortening of -EncodedCommand, so every form is
+  # listed. ' -enco' also covers the longer spellings.
+  selection_encoded:
+    CommandLine|contains:
+      - ' -e '
+      - ' -en '
+      - ' -enc '
+      - ' -enco'
+      - ' -ec '
+  condition: selection_powershell and selection_encoded
+falsepositives:
+  - Software deployment and management tools, which often pass their scripts encoded
+level: high

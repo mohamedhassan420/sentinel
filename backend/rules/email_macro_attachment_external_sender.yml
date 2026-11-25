@@ -1,0 +1,32 @@
+title: Macro-Enabled Office Attachment From An External Sender
+id: 8821a4fb-49d8-4e84-9630-d64560e11108
+status: experimental
+description: |
+  The mail gateway delivered an Office file that can carry macros (.docm,
+  .xlsm and similar) from a sender outside the company. A macro is a small
+  program inside the document, and a booby-trapped attachment is the classic
+  way into a network. Lookalike sender domains such as c0rp.example are
+  caught too, because they are not the real corp.example.
+references:
+  - https://attack.mitre.org/techniques/T1566/001/
+author: Mohamed Hassan
+date: 2026-11-25
+tags:
+  - attack.initial_access
+  - attack.t1566.001
+logsource:
+  category: email # Sigma has no standard name for mail gateway logs
+detection:
+  selection:
+    action: delivered
+    attachment|endswith:
+      - .docm
+      - .dotm
+      - .xlsm
+      - .pptm
+  filter_internal:
+    sender_domain: corp.example
+  condition: selection and not filter_internal
+falsepositives:
+  - A supplier or customer who genuinely sends macro-enabled spreadsheets
+level: medium

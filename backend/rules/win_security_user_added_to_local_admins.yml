@@ -1,0 +1,28 @@
+title: User Added To The Local Administrators Group
+id: ea2203ab-c671-4a08-884d-8b3c94322ea2
+status: experimental
+description: |
+  An account was added to a machine's Administrators group (event 4732).
+  Administrators can do anything on that machine: install software, read
+  every file, switch off security tools. The group is recognised by its SID
+  (security identifier), S-1-5-32-544, which is the same on every Windows
+  machine whatever language it runs in.
+references:
+  - https://attack.mitre.org/techniques/T1098/
+author: Mohamed Hassan
+date: 2026-11-25
+tags:
+  - attack.persistence
+  - attack.privilege_escalation
+  - attack.t1098
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    EventID: 4732
+    TargetSid: S-1-5-32-544
+  condition: selection
+falsepositives:
+  - IT support granting administrator rights through an approved request
+level: high

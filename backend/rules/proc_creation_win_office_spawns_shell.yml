@@ -1,0 +1,37 @@
+title: Office Application Starts A Command Shell
+id: 41d3b90e-b88f-477f-81b1-cf8653d83769
+status: experimental
+description: |
+  Word, Excel, PowerPoint or Outlook started a command shell or script
+  host. Office programs open documents; they have no everyday reason to
+  launch cmd.exe or PowerShell. When one does, a macro in a document is
+  almost always running commands.
+references:
+  - https://attack.mitre.org/techniques/T1204/002/
+author: Mohamed Hassan
+date: 2026-11-25
+tags:
+  - attack.execution
+  - attack.t1204.002
+logsource:
+  product: windows
+  category: process_creation
+detection:
+  selection_parent:
+    ParentImage|endswith:
+      - '\WINWORD.EXE'
+      - '\EXCEL.EXE'
+      - '\POWERPNT.EXE'
+      - '\OUTLOOK.EXE'
+  selection_child:
+    Image|endswith:
+      - '\cmd.exe'
+      - '\powershell.exe'
+      - '\pwsh.exe'
+      - '\wscript.exe'
+      - '\cscript.exe'
+      - '\mshta.exe'
+  condition: selection_parent and selection_child
+falsepositives:
+  - A few business add-ins and document-automation tools that shell out to scripts
+level: high

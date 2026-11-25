@@ -1,0 +1,30 @@
+title: Large Upload To A Public IP Address
+id: 7ad4184c-3706-4a61-a241-d26ea56c542e
+status: experimental
+description: |
+  The firewall saw one connection send 1 GB or more to an address on the
+  public internet. Office machines mostly download; browsing and email send
+  very little. An upload this size is a lot of data leaving the company,
+  which is what data theft (exfiltration) looks like on the network.
+references:
+  - https://attack.mitre.org/techniques/T1048/
+author: Mohamed Hassan
+date: 2026-11-25
+tags:
+  - attack.exfiltration
+  - attack.t1048
+logsource:
+  category: firewall
+detection:
+  selection:
+    bytes_sent|gte: 1073741824 # 1 GB, in bytes
+  # Private ranges (RFC 1918): a big copy to an internal server is a backup.
+  filter_private:
+    dst_ip|cidr:
+      - 10.0.0.0/8
+      - 172.16.0.0/12
+      - 192.168.0.0/16
+  condition: selection and not filter_private
+falsepositives:
+  - Cloud backups and large file shares to a partner. Add the destination to the filter once it is verified.
+level: high

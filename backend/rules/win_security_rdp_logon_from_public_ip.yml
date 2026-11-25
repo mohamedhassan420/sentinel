@@ -1,0 +1,36 @@
+title: Remote Desktop Logon From A Public IP Address
+id: ba52dcc4-40f9-4021-b012-d1955a0b11e0
+status: experimental
+description: |
+  A successful Remote Desktop logon (event 4624, logon type 10) from an
+  address outside the company network. Staff working from home come in
+  through the VPN, which gives them an internal address. Straight after a
+  burst of failed logons, this means a password guess worked.
+references:
+  - https://attack.mitre.org/techniques/T1133/
+  - https://attack.mitre.org/techniques/T1078/
+author: Mohamed Hassan
+date: 2026-11-25
+tags:
+  - attack.initial_access
+  - attack.t1133
+  - attack.t1078
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    EventID: 4624
+    LogonType: 10 # 10 = Remote Desktop
+  # The private address ranges (RFC 1918) plus this machine itself.
+  # Anything outside them is on the public internet.
+  filter_private:
+    IpAddress|cidr:
+      - 10.0.0.0/8
+      - 172.16.0.0/12
+      - 192.168.0.0/16
+      - 127.0.0.0/8
+  condition: selection and not filter_private
+falsepositives:
+  - A server deliberately exposed to the internet for Remote Desktop, which is itself a risk worth fixing
+level: high
