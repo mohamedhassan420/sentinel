@@ -1,0 +1,15 @@
+# Start the whole app with: docker compose up
+# Then open http://localhost:8000
+services:
+  sentinel:
+    build: .
+    ports:
+      # 127.0.0.1 means only this computer can reach the app,
+      # not other devices on the same network.
+      - "127.0.0.1:8000:8000"
+    volumes:
+      # Keeps the database when the container is stopped or rebuilt.
+      - sentinel-data:/data
+
+volumes:
+  sentinel-data:
