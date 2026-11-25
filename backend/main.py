@@ -10,8 +10,13 @@ from sqlmodel import Session, col, func, select
 
 from backend import simulator
 from backend.db import create_tables, get_session
-from backend.models import Log, LogPage
+from backend.engine import detection
+from backend.models import Alert, AlertPage, Log, LogPage
 from backend.simulator import noise
+
+# The detection rules, read once when the server starts. A mistake in a rule
+# file stops the server right here instead of hiding until an attack is missed.
+RULES = detection.load_rules()
 
 
 @asynccontextmanager
@@ -34,14 +39,27 @@ def health() -> dict:
 
 @app.post("/api/simulate/{scenario}")
 def simulate(scenario: str, session: SessionDep) -> dict:
-    """Write one attack scenario, mixed with background noise, into the log store."""
+    """Write one attack scenario, mixed with background noise, into the log
+    store, then run the detection rules over the new logs."""
     if scenario not in simulator.SCENARIOS:
         raise HTTPException(status_code=404, detail="Unknown scenario")
     logs = simulator.run(scenario)
     session.add_all(logs)
-    session.commit()
+    session.flush()  # gives every log its id, which the alerts point back to
+    # ponytail: the rules see only this batch of new logs. Good enough while
+    # every batch is a whole scenario. A real SIEM re-checks a sliding time
+    # window, so a burst split across two batches is still counted.
+    alerts = detection.detect(logs, RULES)
+    session.add_all(alerts)
     background = sum(log.scenario == noise.SCENARIO for log in logs)
-    return {"added": len(logs), "attack": len(logs) - background, "background": background}
+    result = {
+        "added": len(logs),
+        "attack": len(logs) - background,
+        "background": background,
+        "alerts": len(alerts),
+    }
+    session.commit()  # logs and alerts are saved together, or not at all
+    return result
 
 
 @app.get("/api/logs")
@@ -87,9 +105,20 @@ def log_filter_options(session: SessionDep) -> dict:
 
     return {
         "sources": distinct(Log.source),
-        "event_ids": distinct(Log.event_id),
+        # Firewall and email logs have no event ID, so skip the empty value.
+        "event_ids": [event_id for event_id in distinct(Log.event_id) if event_id is not None],
         "scenarios": distinct(Log.scenario),
     }
+
+
+@app.get("/api/alerts")
+def list_alerts(session: SessionDep, limit: Annotated[int, Query(ge=1, le=1000)] = 200) -> AlertPage:
+    """Newest alerts first."""
+    total = session.exec(select(func.count()).select_from(Alert)).one()
+    alerts = session.exec(
+        select(Alert).order_by(col(Alert.time).desc(), col(Alert.id).desc()).limit(limit)
+    ).all()
+    return AlertPage(total=total, alerts=alerts)
 
 
 # In Docker the built React app sits next to the backend, and FastAPI serves
