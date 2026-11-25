@@ -1,0 +1,29 @@
+attack: |
+  An ordinary account can do limited damage. An administrator can install
+  software, read every file and switch off security tools. Getting from one
+  to the other is called privilege escalation. The simplest way, once the
+  attacker has enough rights, is to add an account they control to the
+  Administrators group.
+log_shows: |
+  Event 4732 is written when a member is added to a local group. It is
+  confusing at first, because "Target" here is the group and not the person.
+  TargetSid S-1-5-32-544 is the Administrators group.
+
+  The new member appears only as a SID (MemberSid), the ID number Windows
+  gives every account. SubjectUserName is who made the change.
+why: |
+  The rule checks two fields: the event is 4732, and the group's SID is
+  S-1-5-32-544. It uses the SID and not the name "Administrators" because
+  the name changes with the language Windows is set to (Administrateurs,
+  Administratoren) and the SID never does.
+
+  Adding someone to any other group does not fire it.
+security_plus:
+  topic: Least privilege
+  text: |
+    Security+ returns to this principle constantly: give each account only
+    the rights its job needs. Administrator rights are granted through a
+    tracked request, for a reason, and reviewed. Privilege creep is the slow
+    build-up of rights nobody removed. A change to an admin group outside
+    that process is either an attack or a broken process, and both need
+    attention.

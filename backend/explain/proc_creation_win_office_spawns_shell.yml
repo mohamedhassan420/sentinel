@@ -1,0 +1,32 @@
+attack: |
+  When someone opens a booby-trapped document and lets its macro run, the
+  macro's first job is usually to start a command shell (cmd.exe or
+  PowerShell). The shell is how the attacker runs commands on the machine,
+  with the victim's own rights. ATT&CK calls this User Execution, because
+  the attack only works when a person opens the file.
+log_shows: |
+  Sysmon is a free Microsoft tool that logs more detail than Windows does
+  by default. Its event 1 records every program that starts: the program
+  (Image), its full command line, and the program that started it
+  (ParentImage).
+
+  In the attack's line the parent is WINWORD.EXE and the child is cmd.exe
+  running "whoami": the attacker checking whose account they have landed in.
+why: |
+  The rule joins two checks with "and". The parent must be an Office
+  program, and the child must be a command shell or script host. Either one
+  alone is ordinary: Word starts all day, and so does cmd.exe. Together they
+  are rare, because Office programs have no everyday reason to open a
+  command prompt.
+
+  Watching which program started which is one of the most dependable ideas
+  in detection. Attackers can rename files, but the chain of parents is much
+  harder to fake.
+security_plus:
+  topic: Malicious code and application hardening
+  text: |
+    Security+ lists macros and scripts among the indicators of malicious
+    code. Hardening closes the door: block macros in documents from the
+    internet, and use application control so Office programs cannot start
+    script hosts. The principle of least functionality says to switch off
+    features nobody needs.

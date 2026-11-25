@@ -1,0 +1,28 @@
+attack: |
+  An attacker's first foothold is usually small: one command running on one
+  machine. To do more, they download their real tools. ATT&CK calls this
+  Ingress Tool Transfer. PowerShell can fetch a file from the web in a
+  single line, so it is the usual way to do it on Windows.
+log_shows: |
+  PowerShell keeps its own log. With script block logging switched on,
+  event 4104 records the text of each script just before it runs, after any
+  encoding has been removed.
+
+  So although the attacker passed the script as Base64, this log shows it
+  in plain words: Invoke-WebRequest, a web address, and where to save the
+  file.
+why: |
+  The rule searches the script text (ScriptBlockText) for the commands that
+  download: Invoke-WebRequest, Net.WebClient, DownloadString, DownloadFile
+  and Start-BitsTransfer. Any one of them is enough.
+
+  It works as a pair with the encoded-command rule. That one sees how
+  PowerShell was started. This one sees what it actually ran. An attacker
+  who dodges one is still caught by the other.
+security_plus:
+  topic: Logging and defence in depth
+  text: |
+    Security+ stresses that you cannot detect what you do not log. Script
+    block logging is off by default and has to be switched on by policy.
+    Two rules on two log sources watching the same attack is defence in
+    depth: no single control has to be perfect.

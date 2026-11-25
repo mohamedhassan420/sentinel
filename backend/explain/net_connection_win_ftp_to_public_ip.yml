@@ -1,0 +1,29 @@
+attack: |
+  Exfiltration means getting stolen data out of the network. It is often
+  what the attacker came for, and everything before it was preparation.
+  They need a channel to carry the files, and old protocols such as FTP are
+  handy: Windows has an FTP program built in, and many companies have
+  stopped watching for it.
+log_shows: |
+  Sysmon event 3 records a program opening a network connection: which
+  program (Image), to which address (DestinationIp) and on which port
+  (DestinationPort). A port is a numbered door on a server, and each kind
+  of service has its usual one. Port 21 is FTP.
+
+  The attack's line shows ftp.exe connecting to port 21 at an address
+  outside the company.
+why: |
+  The rule fires on a connection to port 21 unless the destination is a
+  private (internal) address. It does not care which program made the
+  connection, so an FTP tool the attacker renamed is caught too.
+
+  It cannot tell how much data moved. That is the firewall rule's job, and
+  the two alerts together tell the whole story.
+security_plus:
+  topic: Secure and insecure protocols
+  text: |
+    Security+ expects you to know the insecure protocols and what replaces
+    them. FTP (port 21) sends files and passwords as plain text. SFTP (port
+    22) and FTPS encrypt them. Blocking outbound traffic the company has no
+    use for is called egress filtering, and it would have stopped this
+    upload outright.

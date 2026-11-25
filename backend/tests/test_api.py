@@ -4,6 +4,7 @@ import pytest
 from sqlmodel import Session, create_engine, func, select
 
 from backend.db import create_tables
+from backend.explain import load_explanations
 from backend.models import Log
 from backend.simulator import events
 
@@ -145,3 +146,130 @@ def test_a_database_from_an_older_version_is_rebuilt(tmp_path):
     create_tables(engine)  # a normal restart
     assert count_logs() == 1  # an up-to-date database is left alone
     engine.dispose()
+
+
+# ------------------------------------------------- Phase 3: queue and Explain
+
+
+def test_alert_statuses_move_through_the_queue(client):
+    client.post("/api/simulate/brute_force")
+    logon, failures = client.get("/api/alerts").json()["alerts"]
+
+    changed = client.patch(f"/api/alerts/{failures['id']}", json={"status": "In progress"})
+    assert changed.status_code == 200
+    assert changed.json()["status"] == "In progress"
+    client.patch(f"/api/alerts/{logon['id']}", json={"status": "Closed as false positive"})
+
+    def ids(**params):
+        return [alert["id"] for alert in client.get("/api/alerts", params=params).json()["alerts"]]
+
+    assert ids(status="In progress") == [failures["id"]]
+    assert ids(status=["New", "In progress"]) == [failures["id"]]  # the open alerts
+    assert ids(status="Closed as false positive") == [logon["id"]]
+    assert ids(status="Closed as true positive") == []
+    assert ids(severity="High") == [logon["id"]]
+    assert ids(severity="High", status="New") == []  # filters combine with AND
+
+
+def test_only_a_real_status_on_a_real_alert_is_accepted(client):
+    client.post("/api/simulate/phishing")
+    alert = client.get("/api/alerts").json()["alerts"][0]
+    url = f"/api/alerts/{alert['id']}"
+
+    assert client.patch(url, json={"status": "Deleted"}).status_code == 422
+    assert client.patch(url, json={}).status_code == 422
+    # Only the status can change. The evidence cannot be rewritten.
+    client.patch(url, json={"status": "In progress", "severity": "Low", "log_ids": []})
+    after = client.get(url).json()["alert"]
+    assert after == {**alert, "status": "In progress"}
+
+    assert client.patch("/api/alerts/999999", json={"status": "New"}).status_code == 404
+    assert client.get("/api/alerts/999999").status_code == 404
+    assert client.get("/api/alerts/0").status_code == 422
+    assert client.get(f"/api/alerts/{10**30}").status_code == 422
+    assert client.get("/api/alerts", params={"status": "Open"}).status_code == 422
+    assert client.get("/api/alerts", params={"severity": "Severe"}).status_code == 422
+
+
+def test_an_alert_opens_with_its_evidence_and_its_rule(client):
+    client.post("/api/simulate/brute_force")
+    logon, failures = client.get("/api/alerts").json()["alerts"]
+
+    detail = client.get(f"/api/alerts/{failures['id']}").json()
+    assert detail["alert"] == failures
+    assert [log["id"] for log in detail["logs"]] == sorted(failures["log_ids"])  # 40 logs, oldest first
+    assert {log["event_id"] for log in detail["logs"]} == {4625}
+    assert detail["rule"]["name"] == "win_security_many_failed_logons"
+    assert detail["rule"]["techniques"] == [{"id": "T1110", "name": "Brute Force"}]
+    assert detail["rule"]["false_positives"]
+
+    detail = client.get(f"/api/alerts/{logon['id']}").json()
+    assert [log["event_id"] for log in detail["logs"]] == [4624]
+
+
+def test_dashboard_counts(client):
+    empty = client.get("/api/dashboard").json()
+    assert empty["open_by_severity"] == {"Low": 0, "Medium": 0, "High": 0, "Critical": 0}
+    assert sum(empty["by_status"].values()) == 0
+    assert len(empty["tactics"]) == 14  # every tactic is listed, seen or not
+    assert empty["techniques"] == []
+
+    client.post("/api/simulate/full_chain")  # 9 alerts
+    board = client.get("/api/dashboard").json()
+    assert board["open_by_severity"] == {"Low": 1, "Medium": 3, "High": 5, "Critical": 0}
+    assert board["by_status"]["New"] == 9
+    seen = {row["tactic"]: row["alerts"] for row in board["tactics"] if row["alerts"]}
+    assert seen == {
+        "Initial Access": 1, "Execution": 4, "Persistence": 2, "Privilege Escalation": 1,
+        "Defense Evasion": 1, "Command and Control": 1, "Exfiltration": 2,
+    }
+    # The tactics come in the order an attack moves through them.
+    assert [row["tactic"] for row in board["tactics"]][:3] == ["Reconnaissance", "Resource Development", "Initial Access"]
+    assert {"id": "T1059.001", "name": "PowerShell", "alerts": 2} in board["techniques"]
+
+    # Closing an alert takes it out of the open counts. Closing it as a
+    # false positive also takes its technique off the map.
+    alerts = client.get("/api/alerts").json()["alerts"]
+    upload = next(alert for alert in alerts if alert["rule_id"] == "fw_large_upload_to_public_ip")
+    ftp = next(alert for alert in alerts if alert["rule_id"] == "net_connection_win_ftp_to_public_ip")
+    client.patch(f"/api/alerts/{upload['id']}", json={"status": "Closed as true positive"})
+    client.patch(f"/api/alerts/{ftp['id']}", json={"status": "Closed as false positive"})
+    board = client.get("/api/dashboard").json()
+    assert board["open_by_severity"] == {"Low": 1, "Medium": 2, "High": 4, "Critical": 0}
+    assert board["by_status"] == {
+        "New": 7, "In progress": 0, "Closed as true positive": 1, "Closed as false positive": 1,
+    }
+    assert {row["tactic"]: row["alerts"] for row in board["tactics"]}["Exfiltration"] == 1
+    assert "T1048.003" not in {row["id"] for row in board["techniques"]}
+
+
+def test_every_rule_has_an_explain_page(client):
+    rules = client.get("/api/rules").json()
+    assert len(rules) == 10
+    for rule in rules:
+        page = client.get(f"/api/rules/{rule['name']}").json()
+        assert page["title"] == rule["title"]
+        assert page["yaml_text"].lstrip("# \n").startswith(("title:", "A threshold rule"))
+        explanation = page["explanation"]
+        for part in (explanation["attack"], explanation["log_shows"], explanation["why"],
+                     explanation["security_plus"]["topic"], explanation["security_plus"]["text"]):
+            assert part.strip()
+
+    assert client.get("/api/rules/no_such_rule").status_code == 404
+    assert client.get("/api/rules/..%2F..%2Fmain").status_code == 404
+    assert client.get(f"/api/rules/{'x' * 101}").status_code == 422
+
+
+def test_explanations_must_match_the_rules(tmp_path):
+    good = "attack: a\nlog_shows: b\nwhy: c\nsecurity_plus: {topic: d, text: e}\n"
+    (tmp_path / "rule_one.yml").write_text(good, encoding="utf-8")
+    assert load_explanations({"rule_one"}, tmp_path)["rule_one"].security_plus.topic == "d"
+
+    with pytest.raises(ValueError, match="rule_two"):  # a rule with no explanation
+        load_explanations({"rule_one", "rule_two"}, tmp_path)
+    with pytest.raises(ValueError, match="rule_one"):  # an explanation with no rule
+        load_explanations(set(), tmp_path)
+
+    (tmp_path / "rule_one.yml").write_text(good.replace("why:", "wy:"), encoding="utf-8")
+    with pytest.raises(ValueError, match="rule_one.yml is not valid"):  # a misspelt heading
+        load_explanations({"rule_one"}, tmp_path)

@@ -1,0 +1,29 @@
+attack: |
+  Phishing is an email written to trick someone into doing the attacker's
+  work for them. Spearphishing aims at particular people, here the finance
+  team, with a story they will believe, such as an overdue invoice. The
+  attachment is an Office file containing a macro: a small program that runs
+  once the reader clicks "Enable content".
+log_shows: |
+  The email gateway logs every message it delivers: the sender, the sender's
+  domain, the recipient, the subject and the attachment's name.
+
+  Two things stand out in the attack's line. The attachment ends in .docm,
+  where the "m" means the file can carry macros. And the sender's domain is
+  c0rp.example, written with a zero: a lookalike of the real corp.example.
+why: |
+  The rule fires when a delivered message has an attachment ending in
+  .docm, .dotm, .xlsm or .pptm, unless the sender's domain is exactly
+  corp.example. It needs no list of bad domains. A lookalike is caught
+  simply because it is not the real one.
+
+  Colleagues emailing each other macro spreadsheets, which finance teams do
+  every day, are left alone.
+security_plus:
+  topic: Social engineering and email security
+  text: |
+    Security+ covers phishing, spear phishing and the pressure tricks behind
+    them: urgency ("payment required today"), authority and familiarity.
+    Typosquatting is the exam's word for a lookalike domain. The defences
+    are layered: mail filtering, blocking macros in files that came from the
+    internet, and security awareness training.

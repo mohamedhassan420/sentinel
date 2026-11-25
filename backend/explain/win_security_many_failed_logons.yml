@@ -1,0 +1,31 @@
+attack: |
+  A brute force attack is guessing a password over and over until one works.
+  Nobody types the guesses: a program tries thousands of common or leaked
+  passwords against one account. All it needs is the account name, which is
+  often easy to work out from an email address.
+log_shows: |
+  Windows writes event 4625 into its Security log every time a logon fails.
+  Each one names the account that was tried (TargetUserName), the machine
+  (Computer), where the attempt came from (IpAddress) and how it was made
+  (LogonType 10 is Remote Desktop).
+
+  One 4625 is somebody mistyping. Dozens in a row for the same account, from
+  the same outside address, is a program guessing.
+why: |
+  The rule does not alert on a single failed logon, because those happen all
+  day. It counts them. Twenty or more for the same account on the same
+  machine within five minutes raise one alert. The count is kept separately
+  for each account on each machine (the rule's group-by), so six people
+  mistyping once each never add up to twenty.
+
+  It has a blind spot. Password spraying, where one password is tried
+  against many accounts, gives each account only a failure or two. Catching
+  that needs a second rule that counts by source address.
+security_plus:
+  topic: Password attacks and account lockout
+  text: |
+    Security+ covers brute force, dictionary and password spraying attacks,
+    and the controls against them. An account lockout policy stops the
+    guessing after a few failures. Multi-factor authentication (MFA) makes a
+    guessed password useless on its own. This rule is the detective control
+    that tells you those preventive controls are being tested.
