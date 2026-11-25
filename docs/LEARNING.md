@@ -100,3 +100,58 @@ Legitimate activity that looks the same in the logs. For that rule, a document-a
 
 **What is the difference between a tactic and a technique?**
 A tactic is what the attacker is trying to achieve at that step. A technique is how they do it. In the brute force scenario the tactic is Credential Access (get a working password) and the technique is T1110 Brute Force (guess it many times). One tactic can be reached by many techniques: Initial Access can be phishing (T1566) or logging in through an exposed remote service (T1133). In the full attack chain the alerts move through the tactics in order: Initial Access, Execution, Persistence, Exfiltration. That order is the story of the attack.
+
+## Phase 3: Dashboard, alert queue and Explain mode
+
+### What was built
+
+- **A dashboard** as the home page. It shows how many alerts are still open, split by severity, and how many sit in each status. Below that is a strip of the 14 ATT&CK tactics in attack order, lit where alerts point, with the techniques seen underneath. The "Run scenario" button lives here now.
+- **An alert queue with statuses.** Every alert is New, In progress, Closed as true positive or Closed as false positive. The Alerts page lists the open ones by default and can filter by status and severity.
+- **A page per alert.** It shows why the rule fired, the exact log lines that made it fire (the evidence), the harmless causes to rule out, and the control that changes the status.
+- **Explain mode: a page per rule.** Each one says what the attack is, what the log shows and why the rule catches it. It also shows the rule file itself, what else can set the rule off, and a "Security+ connection" box.
+- **Backend support.** New API endpoints for the dashboard counts, one alert with its evidence, changing a status, and the rules with their explanations. There are 137 tests now.
+
+### Why it works this way
+
+- **Only the status of an alert can change.** The title, severity and evidence are what the rule saw. An analyst records a decision about the evidence and never edits the evidence. The API accepts exactly the four statuses and rejects everything else.
+- **The explanations are files, like the rules.** Each rule in `backend/rules/` has a file of the same name in `backend/explain/`. If one is missing or has a misspelt heading, the app refuses to start. A rule nobody can explain is not allowed in.
+- **False positives are taken off the ATT&CK strip.** If an analyst closes an alert as a false positive, nothing really happened, so its tactic and technique stop counting. The strip shows what attackers did, not what rules guessed.
+- **The filters live in the page address.** `#/alerts?severity=High` is a link. The dashboard's numbers are links to the queue already filtered, and the browser's Back button undoes a filter.
+- **Colour never carries meaning alone.** Every severity dot has its word beside it and every lit tactic has its count, so the screens still work for someone who cannot tell orange from yellow.
+- **Log text is shown as plain text.** Parts of a log are written by the attacker. The page never treats log text as HTML, so nothing in a log can run as code in the browser. (This attack is called cross-site scripting, or XSS.)
+
+### What Mohamed learns
+
+**The alert triage workflow**
+
+Triage means deciding quickly what an alert is and what to do about it. Four questions, in order:
+
+1. **Is it real?** Read the evidence and check the rule's known false positives. The alert page lists them under "Harmless causes to rule out".
+2. **How bad is it?** The severity is a starting point. What the attacker could reach decides the rest.
+3. **What is affected?** Which host and which user, and what else those two can touch.
+4. **Who needs to know?** A confirmed attack is escalated to the incident responders and to the system's owner. A false positive is closed with the reason noted.
+
+The statuses follow that path. **New** means nobody has looked. **In progress** means someone is investigating, so two analysts do not work the same alert. The two **Closed** statuses record the answer to question 1.
+
+**How severity is judged**
+
+Severity combines two things: how much damage the activity could do, and how likely it is to be a real attack that succeeds.
+
+Damage is measured against the CIA triad, the three things security protects:
+
+- **Confidentiality:** data is seen only by those allowed to see it. Exfiltration breaks this.
+- **Integrity:** data and systems are changed only by those allowed to. A new administrator account breaks this.
+- **Availability:** systems work when needed. Ransomware breaks this.
+
+That is why "User Added To The Local Administrators Group" is High (an attacker with admin rights can break all three) and "Local User Account Created" is Low (on its own it changes little, and IT sometimes does it).
+
+### Check questions
+
+**What do you do first when a new alert arrives?**
+Decide whether it is real before doing anything else. Open the alert, set it to In progress so nobody else duplicates the work, and read the evidence: which host, which user, what exactly the log lines say. Compare it with the rule's known false positives. Only once it looks real do you move on to how bad it is, what is affected and who to tell. Acting before that wastes time on harmless activity, or worse, disrupts a member of staff who did nothing wrong.
+
+**Why is "Closed as false positive" useful data?**
+Because it measures the rule. If one rule's alerts are closed as false positives again and again, the rule is too loose and needs tuning: a filter for the known-good case or a higher threshold. Without that record, analysts just learn to ignore the rule, which is called alert fatigue, and then miss the one time it is right. It also keeps the picture honest: Sentinel's ATT&CK strip leaves false positives out, so it shows only what really happened.
+
+**Pick one alert and explain it as you would to a manager.**
+Take "Large Upload To A Public IP Address". "At 21:07 a finance workstation, the one a.khan uses, sent about 2 GB of data to a server on the internet that we have no business relationship with. Our staff machines normally send a tiny fraction of that. This is what data theft looks like, and it is rated High because the confidentiality of finance data is at risk. I have confirmed it is not a backup or a known file share. I recommend we disconnect that machine from the network now and find out which files were sent." A manager needs what happened, what is at risk, how sure you are and what you want to do. They do not need event IDs.
