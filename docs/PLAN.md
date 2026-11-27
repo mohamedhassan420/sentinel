@@ -10,7 +10,7 @@ Sentinel is a web app that plays the role of a junior SOC analyst's assistant. I
 
 **Who it is for:**
 
-- **Recruiters and interviewers**, who get a live demo link, a clean README and a 2-minute video.
+- **Recruiters and interviewers**, who get the GitHub link (it runs with one Docker command), a clean README and a 2-minute video.
 - **Mohamed**, who learns the blue-team workflow (logs → detection → triage → report) that Security+ and SOC analyst roles test.
 
 **Why it works as a portfolio piece:**
@@ -72,12 +72,12 @@ The simulator can also run a **"full attack chain"**: phishing → PowerShell �
 | Styling and parts | Tailwind CSS + shadcn/ui + Recharts | Clean, consistent components and charts. |
 | Tests | pytest + one sample log per rule that must fire, and one that must not | Rules are tested against true and false positives. |
 | Packaging | Docker | One command runs the whole app on any machine. |
-| Hosting | Render (or Fly.io) free tier, one container | A public link for the CV. |
+| Hosting | None. Runs locally with `docker compose up --build` | Every free host needs a card (decided 27 Nov 2026). |
 | Automation | GitHub Actions | Runs the tests on every change; green "passing" badge in the README. |
 
 **Two settings that protect Mohamed:**
 
-- **Demo mode (default on the public site).** AI answers are pre-generated and stored, so strangers clicking the live demo cost nothing and no API key is exposed.
+- **Demo mode (default with no key).** AI answers are pre-generated and stored, so anyone can try every feature without an API key or any cost.
 - **Live mode (local, or with Mohamed's own key).** Calls Claude for real. The key lives only in an environment variable, never in the code or on GitHub.
 - **The API key is separate from a Claude subscription.** A Max plan does not cover the app's API calls. Live mode needs a key from the Claude Console with a small prepaid balance; demo mode needs nothing.
 
@@ -230,13 +230,13 @@ If Fable's share of the weekly limit runs out, use Claude Opus 5.5 at xhigh unti
 
 ### Phase 6: Polish and ship
 
-**Goal:** a public link, a README that sells it, and Mohamed ready to present it.
+**Goal:** a README that sells it, and Mohamed ready to present it.
 
 - Build: a UI review pass at phone and desktop sizes, empty and loading states, and an "About" page.
-- Build: deployment to the public host in demo mode, the README, the demo video script, the interview prep page, and a LinkedIn post draft.
+- Build: the README, the demo video script, the interview prep page, and a LinkedIn post draft.
 - Build: a security scan and threat model of Sentinel's own code before it goes public.
 - Mohamed does: records the demo video (about 2 minutes) using the script, and practises the interview prep answers.
-- **Done when:** the live link works in a fresh browser, the README has screenshots and a passing-tests badge, and Mohamed can give the 60-second pitch without notes.
+- **Done when:** `docker compose up --build` works from a fresh clone, the README has screenshots and a passing-tests badge, and Mohamed can give the 60-second pitch without notes.
 
 **What Mohamed learns**
 
@@ -247,7 +247,7 @@ If Fable's share of the weekly limit runs out, use Claude Opus 5.5 at xhigh unti
 
 ### 1. README
 
-1. Title, one-line pitch, and badges (tests passing, licence, live demo link).
+1. Title, one-line pitch, and badges (tests passing, licence).
 2. A 10-second GIF of the full attack chain turning into one incident.
 3. "What it does" in 5 bullets, then 3 screenshots: dashboard, alert with AI triage, incident timeline.
 4. Architecture diagram and the tech stack table.
@@ -266,7 +266,7 @@ If Fable's share of the weekly limit runs out, use Claude Opus 5.5 at xhigh unti
 | 1:00–1:20 | AI triage card | "The AI explains the alert and suggests a severity. I stay in control: I accept or change it." |
 | 1:20–1:40 | Incident timeline | "Four alerts on one host are grouped into one incident, so the attack reads as a story." |
 | 1:40–1:55 | Download the PDF report | "One click gives a report with the timeline, indicators and containment steps." |
-| 1:55–2:00 | GitHub page | "Code and live demo are linked below." |
+| 1:55–2:00 | GitHub page | "The code is linked below; it runs with one Docker command." |
 
 ### 3. Interview prep one-pager (`docs/INTERVIEW_PREP.md`)
 
@@ -277,7 +277,7 @@ If Fable's share of the weekly limit runs out, use Claude Opus 5.5 at xhigh unti
 
 ### 4. LinkedIn post
 
-About 150 words with the demo GIF: what was built, three things learned, links to the live demo and GitHub. Written in Mohamed's voice, honest that AI helped build it and that Mohamed designed, tested and can explain it.
+About 150 words with the demo GIF: what was built, three things learned, a link to GitHub. Written in Mohamed's voice, honest that AI helped build it and that Mohamed designed, tested and can explain it.
 
 ## Recommended plugins and skills
 
@@ -306,8 +306,8 @@ Taste was written mainly for marketing sites. It leads on public-facing pages; f
 
 | Risk | Fallback |
 | --- | --- |
-| Strangers using the live demo run up AI costs | Demo mode with stored answers is the default on the public site |
-| The free host sleeps and the first load is slow | README says so; the demo video is the backup |
+| Someone without a key cannot try the AI | Demo mode with stored answers is the default when there is no key |
+| No hosted demo, so recruiters must run Docker to try it | The README's GIF and screenshots, and the demo video, show it working |
 | The AI declines some security text | The app still works without AI, and the request falls back to another model |
 | The project grows too big to finish | Frozen scope; extras go on a "Next steps" list in the README |
 | Mohamed cannot explain a part in an interview | Check questions at the end of each phase, plus `LEARNING.md` |

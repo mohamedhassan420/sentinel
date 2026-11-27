@@ -12,13 +12,13 @@ A two-minute screen recording for the CV and LinkedIn. Read the lines in your ow
 | 1:00–1:20 | Scroll to the **AI triage** card. Press **Accept suggestion**. | "The AI explains the alert in plain English, suggests a severity and lists next steps. It is only a suggestion: I accept it or edit it, and I stay accountable. The phishing email even hides an instruction telling the AI to rate it Low. Sentinel treats that as evidence, not as an order." |
 | 1:20–1:40 | Open **Incidents**, then **Incident #1**. Scroll slowly down the timeline. | "One at a time these are nine small alerts. Correlation groups alerts that share a host or a user within thirty minutes, so the attack reads as one story: from Initial Access to Exfiltration in under half an hour." |
 | 1:40–1:55 | Scroll back up. Press **Download report** and open the PDF. | "One click gives a report a manager could read: an executive summary, the timeline, the indicators of compromise, and the containment and recovery steps." |
-| 1:55–2:00 | The GitHub page | "The code and the live demo are linked below. Thanks for watching." |
+| 1:55–2:00 | The GitHub page | "The code is linked below, and it runs with one Docker command. Thanks for watching." |
 
 That is about 250 words, which is two minutes at an unhurried pace.
 
 ## Before you record
 
-1. Start from an empty Sentinel, so the dashboard shows zeros. In a terminal in the project folder, run `docker compose down -v`, then `docker compose up`. Open http://localhost:8000. (Or use the public demo just after it wakes up, when its store is empty.)
+1. Start from an empty Sentinel, so the dashboard shows zeros. In a terminal in the project folder, run `docker compose down -v`, then `docker compose up`. Open http://localhost:8000.
 2. Make the browser window about 1280 by 800, at 100% zoom, with no other tabs and the bookmarks bar hidden (Ctrl+Shift+B).
 3. Close anything that might pop up a notification.
 4. Do one silent practice run of the clicks, then repeat step 1 so the store is empty again.
@@ -40,4 +40,4 @@ If the shortcut does nothing, open **Settings**, choose **Gaming**, then **Xbox 
 
 - Watch it once with the sound on. If you stumbled, record again: a second take is usually better.
 - Upload the MP4 straight to the LinkedIn post (see [LINKEDIN_POST.md](LINKEDIN_POST.md)).
-- If the free host is asleep when someone opens the live demo, the video is the backup, so it is worth getting right.
+- There is no hosted demo, so for most people the video is the only way they will see Sentinel run. It is worth getting right.

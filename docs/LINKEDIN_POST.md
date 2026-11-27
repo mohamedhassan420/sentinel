@@ -1,6 +1,6 @@
 # Sentinel: LinkedIn post draft
 
-A draft of about 150 words. Change anything that does not sound like you. Before posting, put the live demo's address where it says `LIVE-DEMO-LINK`, and attach the demo video (or `docs/screenshots/full-attack-chain.gif` until the video is recorded).
+A draft of about 150 words. Change anything that does not sound like you. Before posting, attach the demo video (or `docs/screenshots/full-attack-chain.gif` until the video is recorded).
 
 ---
 
@@ -16,7 +16,7 @@ Three things I learned:
 
 I built it with Claude Code: the AI wrote the code to my plan, and I tested every phase and can explain every part.
 
-Live demo: LIVE-DEMO-LINK
+Runs locally with one command: docker compose up
 Code: https://github.com/mohamedhassan420/sentinel
 
 #SOC #BlueTeam #SecurityPlus #DetectionEngineering
@@ -26,6 +26,6 @@ Code: https://github.com/mohamedhassan420/sentinel
 ## Posting checklist
 
 1. The GitHub repo is public, and the link opens in a private browser window.
-2. The live demo link opens in a private browser window. (The free host can take about a minute to wake up.)
+2. The GitHub link opens in a private browser window, which shows the repo is public.
 3. The video or GIF is attached to the post itself, not just linked.
 4. You have read the post out loud once, and it sounds like you.
