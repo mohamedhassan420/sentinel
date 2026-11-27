@@ -15,7 +15,7 @@ engine = create_engine(f"sqlite:///{DB_PATH}", connect_args={"check_same_thread"
 
 # Add 1 whenever a table's columns change. SQLite keeps this number inside
 # the database file (as "user_version"), so an old file can be recognised.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def create_tables(db: Engine = engine) -> None:

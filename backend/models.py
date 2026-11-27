@@ -1,5 +1,6 @@
-"""The database tables (logs, the alerts raised from them, and the triage
-of each alert) and the shapes of the API's answers.
+"""The database tables (logs, the alerts raised from them, the incidents the
+alerts are grouped into, and the AI's suggestions) and the shapes of the
+API's answers.
 
 Real SOC tools receive logs from many sources (Windows, Sysmon, firewalls...)
 and "normalise" them into one shape so the same rules can read them all.
@@ -49,6 +50,19 @@ class Log(SQLModel, table=True):
     _time_as_utc = field_serializer("time")(_as_utc)
 
 
+class Incident(SQLModel, table=True):
+    """A group of related alerts: one attack, seen as several detections.
+
+    The row holds nothing but its number. Which alerts belong to it is
+    recorded on the alerts (Alert.incident_id), and everything else about an
+    incident (its hosts, users, times, severity and status) is worked out
+    from those alerts each time it is asked for. Nothing is stored twice, so
+    an incident can never disagree with its own alerts.
+    """
+
+    id: int | None = Field(default=None, primary_key=True)
+
+
 class Alert(SQLModel, table=True):
     """One detection rule matching. A log records; an alert asks a person to look."""
 
@@ -65,6 +79,9 @@ class Alert(SQLModel, table=True):
     user: str = Field(index=True)
     log_ids: list[int] = Field(sa_column=Column(JSON, nullable=False))  # the evidence
     status: str = STATUSES[0]  # one of STATUSES; every alert starts as "New"
+    # The incident this alert was grouped into: see engine/correlation.py.
+    # Empty only for the instant between being raised and being grouped.
+    incident_id: int | None = Field(default=None, foreign_key="incident.id", index=True)
 
     _time_as_utc = field_serializer("time")(_as_utc)
 
@@ -132,6 +149,60 @@ class ReviewChange(SQLModel):
     next_steps: list[Step] = Field(max_length=8)
 
 
+class IncidentSuggestion(SQLModel):
+    """A summary of one security incident, for the incident report."""
+
+    # Like Suggestion above, this class is exactly what the AI is allowed to
+    # answer for an incident, and its answer is untrusted until it has
+    # passed through here.
+
+    summary: str = Field(min_length=1, max_length=3000)  # the story of the attack, for a manager
+    severity: Severity = Field(sa_type=AutoString)  # of the incident as a whole
+    severity_reason: str = Field(min_length=1, max_length=1000)
+    # Containment: what stops the attack spreading, most urgent first.
+    containment: list[Step] = Field(min_length=1, max_length=6, sa_column=Column(JSON, nullable=False))
+    # Recovery: what removes the attacker's changes and returns to normal.
+    recovery: list[Step] = Field(min_length=1, max_length=6, sa_column=Column(JSON, nullable=False))
+    confidence: Confidence = Field(sa_type=AutoString)
+
+
+class IncidentSummary(IncidentSuggestion, table=True):
+    """The AI's summary of one incident, and what the analyst decided.
+
+    It works like Triage: the AI's words are never changed, and the
+    analyst's version is stored beside them in the `final_` fields.
+    """
+
+    id: int | None = Field(default=None, primary_key=True)
+    incident_id: int = Field(foreign_key="incident.id", unique=True)  # one summary per incident
+    source: str  # "live" or "demo", as for Triage
+    model: str | None = None
+
+    review: str = "Not reviewed"  # one of Review
+    final_severity: str | None = None
+    final_summary: str | None = None
+    final_containment: list[str] | None = Field(default=None, sa_column=Column(JSON))
+    final_recovery: list[str] | None = Field(default=None, sa_column=Column(JSON))
+
+
+class SummaryResult(SQLModel):
+    """What POST /api/incidents/{id}/summary returns. When the AI cannot
+    answer, `summary` is empty and `problem` says why."""
+
+    summary: IncidentSummary | None
+    problem: str = ""
+
+
+class SummaryReview(SQLModel):
+    """What PATCH /api/incidents/{id}/summary accepts: the analyst's final
+    word. Sending back exactly what the AI said counts as accepting it."""
+
+    severity: Severity
+    summary: str = Field(min_length=1, max_length=3000)
+    containment: list[Step] = Field(max_length=6)
+    recovery: list[Step] = Field(max_length=6)
+
+
 class LogPage(SQLModel):
     """What GET /api/logs returns: one page of logs plus the full match count."""
 
@@ -195,11 +266,67 @@ class TechniqueCount(Technique):
     alerts: int
 
 
+IncidentStatus = Literal["Open", "Closed"]
+
+
+class IncidentInfo(SQLModel):
+    """An incident as the app shows it. Every field is worked out from the
+    incident's alerts: see incident_info() in engine/correlation.py."""
+
+    id: int
+    start_time: datetime  # the first alert
+    end_time: datetime  # the latest alert
+    severity: Severity  # the highest among its alerts
+    status: IncidentStatus  # Open while any of its alerts still needs a decision
+    hosts: list[str]  # the machines involved
+    users: list[str]  # the accounts involved
+    tactics: list[str]  # ATT&CK tactics, in the order they first appeared
+    alerts: int  # how many alerts it holds
+    open_alerts: int  # how many of them are New or In progress
+
+    _times_as_utc = field_serializer("start_time", "end_time")(_as_utc)
+
+
+class IncidentPage(SQLModel):
+    """What GET /api/incidents returns: one page of incidents plus the full count."""
+
+    total: int
+    incidents: list[IncidentInfo]
+
+
+class TimelineStep(SQLModel):
+    """One step of an incident's timeline: an alert and the log line that
+    set it off."""
+
+    alert: Alert
+    evidence: Log | None  # the last of the alert's log lines
+
+
+class Indicator(SQLModel):
+    """An indicator of compromise (IoC): a piece of evidence that can be
+    searched for or blocked, such as an address the attacker used."""
+
+    kind: str  # e.g. "IP address"
+    value: str  # e.g. "198.51.100.23"
+    alert_id: int  # the first alert whose evidence shows it
+    alert_title: str
+
+
+class IncidentDetail(SQLModel):
+    """What GET /api/incidents/{id} returns: everything on the incident page."""
+
+    incident: IncidentInfo
+    timeline: list[TimelineStep]  # every alert, oldest first
+    techniques: list[TechniqueCount]  # the ATT&CK techniques seen
+    indicators: list[Indicator]
+
+
 class Dashboard(SQLModel):
     """What GET /api/dashboard returns: the numbers on the home page."""
 
     open_by_severity: dict[Severity, int]  # alerts still waiting for a decision
     by_status: dict[Status, int]
+    open_incidents: int  # incidents with at least one alert still waiting
     # How many alerts point to each tactic and technique. Alerts closed as
     # false positives are left out: nothing really happened there.
     tactics: list[TacticCount]  # all 14 tactics, in the order an attack moves

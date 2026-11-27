@@ -1,5 +1,5 @@
 {
-  "about": "Stored answers for demo mode, one per detection rule. They were written by hand in the style of a live answer and were not produced by a live API call. {host} and {user} are replaced with the alert's own host and user.",
+  "about": "Stored answers for demo mode: one triage per detection rule under 'answers', and one incident summary per simulator scenario under 'incidents', filed by the set of rules whose alerts the incident holds. They were written by hand in the style of a live answer and were not produced by a live API call. {host} and {user} are replaced with the alert's or incident's own host and user.",
   "answers": {
     "email_macro_attachment_external_sender": {
       "summary": "The mail gateway delivered an email to {user} from accounts@c0rp.example. That domain is a lookalike of the company's real one, corp.example, with a zero in place of the letter o. The email carries a Word file that can run macros (.docm), presented as an overdue invoice that must be paid today. The subject line also contains text addressed to AI security tools, telling them to trust the sender and rate this alert Low. That is a prompt injection attempt. It has been ignored here, and it is a strong sign that the sender is hostile.",
@@ -129,5 +129,150 @@
       ],
       "confidence": "Medium"
     }
-  }
+  },
+  "incidents": [
+    {
+      "scenario": "full_chain",
+      "rules": [
+        "email_macro_attachment_external_sender",
+        "proc_creation_win_office_spawns_shell",
+        "proc_creation_win_powershell_encoded_command",
+        "posh_ps_web_download",
+        "win_security_local_account_created",
+        "win_security_user_added_to_local_admins",
+        "net_connection_win_ftp_to_public_ip",
+        "fw_large_upload_to_public_ip"
+      ],
+      "answer": {
+        "summary": "This incident is one attack that ran from a phishing email to stolen data in about half an hour. {user} received an email from accounts@c0rp.example, a lookalike of the company's real domain, with a Word attachment that can run macros (small programs inside a document). When the attachment was opened on {host}, Word started a command shell and then a hidden PowerShell command that downloaded a file called update.ps1 from 198.51.100.23. Minutes later a new local account, svc_update, was created on {host} and added to the Administrators group, which gave the attacker full control of the machine and a way back in. Finally {host} sent about 2 GB to the same address over FTP, a file transfer method with no encryption. The email's subject line also held text telling AI security tools to rate the alert Low. It was ignored, and it shows the sender was hostile.",
+        "severity": "Critical",
+        "severity_reason": "No single alert here is rated above High, but together they show a complete intrusion: the attacker got in, ran code, took administrator rights and removed about 2 GB of data. The data has already left, and the attacker still holds an administrator account on {host}.",
+        "containment": [
+          "Disconnect {host} from the network now, so the attacker loses their connection to it and nothing more can leave.",
+          "Block 198.51.100.23 at the firewall, and search the firewall logs for any other machine that has contacted it.",
+          "Disable the svc_update account on {host} and remove it from the Administrators group.",
+          "Reset the password of {user} and end their open sessions, because every step ran under that account.",
+          "Remove the phishing email from every mailbox and block the sender domain c0rp.example at the mail gateway."
+        ],
+        "recovery": [
+          "Rebuild {host} from a clean image instead of cleaning it by hand: an attacker with administrator rights may have left changes that no log shows.",
+          "Work out which files were in the 2 GB upload, and tell the data owner and the legal team, because a data breach may have to be reported.",
+          "Restore the files {user} needs from a backup taken before the email arrived.",
+          "Before {host} returns to the network, confirm that svc_update is gone and that nothing still connects to 198.51.100.23, then watch the machine closely for a few weeks.",
+          "Block macros in Office files that arrive from the internet, and show staff this email as an example of what to report."
+        ],
+        "confidence": "High"
+      }
+    },
+    {
+      "scenario": "brute_force",
+      "rules": ["win_security_many_failed_logons", "win_security_rdp_logon_from_public_ip"],
+      "answer": {
+        "summary": "An attacker guessed the password of {user} on {host}. There were 40 failed Remote Desktop logons for that account in under two minutes, all from 203.0.113.77, an address on the public internet. Nobody mistypes a password that fast, so a program was trying one password after another: a brute force attack. Straight afterwards the same address logged on successfully. One of the guesses was right, and the attacker now has a working session on {host} as {user}.",
+        "severity": "High",
+        "severity_reason": "A burst of failed logons is common and often harmless on its own, but this one ends in a success from the same address. The account is compromised, and the attacker can read and change whatever {user} can reach from {host}.",
+        "containment": [
+          "Disable the account {user} and end its Remote Desktop session on {host}.",
+          "Block 203.0.113.77 at the firewall.",
+          "Close Remote Desktop on {host} to the internet, so it can only be reached through the VPN.",
+          "Check whether 203.0.113.77 tried other accounts or other servers."
+        ],
+        "recovery": [
+          "Give {user} a new, long password and turn on multi-factor authentication (a second check, such as a code from a phone) before the account is re-enabled.",
+          "Review everything the session did on {host}: programs started, files opened and accounts created. Rebuild the server if anything was changed.",
+          "Turn on account lockout, so an account is locked after a handful of wrong passwords.",
+          "Change the password anywhere else {user} used the same one."
+        ],
+        "confidence": "High"
+      }
+    },
+    {
+      "scenario": "phishing",
+      "rules": ["email_macro_attachment_external_sender", "proc_creation_win_office_spawns_shell"],
+      "answer": {
+        "summary": "{user} received an email from accounts@c0rp.example, a lookalike of the company's real domain with a zero in place of the letter o. It carried a Word file that can run macros (small programs inside a document), presented as an overdue invoice. A few minutes later the attachment was opened on {host}, and Word started a command shell that ran whoami, a command that reports which account it is running as. That is an attacker taking a first look around: the macro ran, and whoever sent the email can now run commands on {host} as {user}. The email's subject line also held text telling AI security tools to rate the alert Low. It was ignored, and it is one more sign that the sender is hostile.",
+        "severity": "High",
+        "severity_reason": "The phishing worked: code chosen by the attacker ran on {host}. So far the evidence shows only a first command, with no download, no new account and no data leaving, which is why this is High and not Critical.",
+        "containment": [
+          "Disconnect {host} from the network before the attacker does more than look around.",
+          "Remove the email from every mailbox, and find out who else received it and whether they opened it.",
+          "Block the sender domain c0rp.example at the mail gateway.",
+          "Reset the password of {user}, because commands ran under that account."
+        ],
+        "recovery": [
+          "Check {host} for anything the macro left behind (new files, scheduled tasks, new accounts) and rebuild it if there is any doubt.",
+          "Delete the saved copy of the attachment from the Outlook cache on {host}.",
+          "Block macros in Office files that arrive from the internet.",
+          "Show staff this email as an example of a lookalike domain, and remind them how to report one."
+        ],
+        "confidence": "High"
+      }
+    },
+    {
+      "scenario": "powershell",
+      "rules": ["proc_creation_win_powershell_encoded_command", "posh_ps_web_download"],
+      "answer": {
+        "summary": "PowerShell was started on {host} under the account {user} with a hidden window and a Base64-encoded command. Base64 is a way of writing text so that it cannot be read at a glance. PowerShell's own log shows what the command really was: it downloaded a file called update.ps1 from http://198.51.100.23 into the user's temporary folder. {user} would have seen nothing on screen. The two alerts are the same action seen by two different logs, and together they show an attacker bringing a tool onto {host}.",
+        "severity": "High",
+        "severity_reason": "A hidden, encoded download from a bare IP address is how attackers fetch their tools, not how software is installed. The file is on {host}, but nothing here shows it being run yet.",
+        "containment": [
+          "Disconnect {host} from the network so the downloaded script cannot reach its server.",
+          "Block 198.51.100.23 at the firewall, and search for other machines that have contacted it.",
+          "Find update.ps1 in the temporary folder of {user} on {host}, keep a copy as evidence and do not run it.",
+          "Find out what started PowerShell (the parent program in the evidence) to learn how the attacker got onto {host}."
+        ],
+        "recovery": [
+          "Delete update.ps1 and anything it created, or rebuild {host} if the script was run.",
+          "Reset the password of {user}, because the command ran under that account.",
+          "Limit PowerShell on staff workstations to signed scripts, and keep script block logging switched on.",
+          "Watch {host} for new PowerShell activity over the next few weeks."
+        ],
+        "confidence": "Medium"
+      }
+    },
+    {
+      "scenario": "privilege_escalation",
+      "rules": ["win_security_local_account_created", "win_security_user_added_to_local_admins"],
+      "answer": {
+        "summary": "A new local account called svc_update was created on {host} by {user}, and seconds later it was added to the Administrators group. A local account exists on that one machine only, outside the company's central account system, and members of Administrators can do anything on the machine. The name looks like a service account (an account used by software, not a person), but it was created from an ordinary user's session and not by an installer. Unless IT did this on purpose, someone using the account of {user} has made themselves a hidden administrator on {host}, one that keeps working if {user} changes their password.",
+        "severity": "High",
+        "severity_reason": "An unexplained administrator account puts everything on {host} at risk and gives an attacker a lasting way back in. Whether it is an attack depends on whether IT approved it, which the logs cannot show.",
+        "containment": [
+          "Ask IT now whether there is an approved request for a local administrator account on {host}.",
+          "If there is none, disable svc_update and remove it from the Administrators group.",
+          "Reset the password of {user} and end their sessions, because whoever created the account was using theirs.",
+          "Disconnect {host} from the network while it is checked."
+        ],
+        "recovery": [
+          "Delete svc_update once the investigation no longer needs it.",
+          "Review everything svc_update and {user} did on {host} after the account was created.",
+          "Find out how the account of {user} was taken over, and close that gap.",
+          "Take local administrator rights away from ordinary staff accounts, so they cannot create accounts at all (least privilege)."
+        ],
+        "confidence": "Medium"
+      }
+    },
+    {
+      "scenario": "exfiltration",
+      "rules": ["net_connection_win_ftp_to_public_ip", "fw_large_upload_to_public_ip"],
+      "answer": {
+        "summary": "{host}, the workstation {user} uses, sent about 2 GB of data to 198.51.100.23, an address on the public internet. The FTP program built into Windows opened the connection, and about twelve minutes later the firewall recorded it closing after about 2 GB had gone out and almost nothing had come back. FTP is an old file transfer method with no encryption, which very little business software still uses. Traffic that flows almost entirely one way, outwards, is an upload. The firewall logs a connection only when it ends, so the data has already left.",
+        "severity": "Critical",
+        "severity_reason": "Unless 198.51.100.23 is a known backup or partner address, about 2 GB of company data is now on a server nobody recognises. That is a loss of confidentiality that has already happened and cannot be undone.",
+        "containment": [
+          "Check quickly whether 198.51.100.23 is an approved backup or partner address. If it is, close the alerts as false positives.",
+          "If it is not, disconnect {host} from the network and block 198.51.100.23 at the firewall.",
+          "Reset the password of {user} and end their sessions.",
+          "Search the firewall logs for other machines that sent data to the same address."
+        ],
+        "recovery": [
+          "Work out which files were sent: look at what {user} and {host} opened or copied in the hour before the upload.",
+          "Tell the data owner and the legal team, because a data breach may have to be reported.",
+          "Find out how the attacker got onto {host}, and rebuild it before it returns to the network.",
+          "Block outgoing FTP from staff workstations at the firewall, and add an alert for large uploads to new addresses."
+        ],
+        "confidence": "Medium"
+      }
+    }
+  ]
 }

@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sentinel incident report: Incident #{{ incident.id }}</title>
+<style>
+  /* The same typeface as the app. In Docker the font files are copied in
+     beside this template. Anywhere else they are missing, and the report
+     falls back to whatever sans-serif font the computer has. */
+  @font-face { font-family: "IBM Plex Sans"; font-weight: 400; src: url("fonts/ibm-plex-sans-latin-400-normal.woff2"); }
+  @font-face { font-family: "IBM Plex Sans"; font-weight: 500; src: url("fonts/ibm-plex-sans-latin-500-normal.woff2"); }
+  @font-face { font-family: "IBM Plex Sans"; font-weight: 600; src: url("fonts/ibm-plex-sans-latin-600-normal.woff2"); }
+  @font-face { font-family: "IBM Plex Mono"; font-weight: 400; src: url("fonts/ibm-plex-mono-latin-400-normal.woff2"); }
+
+  /* The report's colours: the app's palette, darkened to read on white paper. */
+  :root {
+    --text: #17212b;
+    --muted: #5a6875;
+    --line: #d3dae0;
+    --wash: #f3f6f8;
+    --accent: #1c7a6e;
+    --low: #3f73ad;
+    --medium: #a67c13;
+    --high: #c2601a;
+    --critical: #c62f2d;
+  }
+
+  @page {
+    size: A4;
+    margin: 18mm 18mm 21mm;
+    @bottom-left {
+      content: "Sentinel incident report \00B7  Incident #{{ incident.id }}";
+      font: 400 7.5pt "IBM Plex Sans", "DejaVu Sans", sans-serif;
+      color: #5a6875;
+    }
+    @bottom-right {
+      content: "Page " counter(page) " of " counter(pages);
+      font: 400 7.5pt "IBM Plex Sans", "DejaVu Sans", sans-serif;
+      color: #5a6875;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font: 400 9.5pt/1.5 "IBM Plex Sans", "DejaVu Sans", sans-serif;
+    color: var(--text);
+  }
+  p { margin: 0; }
+
+  /* ---------------------------------------------------------------- Title */
+  .eyebrow {
+    font-size: 7.5pt;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  h1 { margin: 1mm 0 0; font-size: 24pt; font-weight: 600; line-height: 1.15; letter-spacing: -0.01em; }
+  .lede { margin-top: 2mm; font-size: 10.5pt; color: var(--muted); }
+
+  .facts {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    margin: 7mm 0 0;
+    border-top: 1.5pt solid var(--text);
+    border-bottom: 0.5pt solid var(--line);
+  }
+  .facts div { padding: 2.5mm 3mm 2.5mm 0; }
+  .facts div:nth-child(n + 5) { border-top: 0.5pt solid var(--line); }
+  .facts dt { font-size: 7.5pt; color: var(--muted); }
+  .facts dd { margin: 0.5mm 0 0; font-weight: 500; overflow-wrap: anywhere; }
+
+  .notice { margin-top: 5mm; padding: 2.5mm 3.5mm; background: var(--wash); border-left: 2pt solid var(--medium); }
+
+  /* ------------------------------------------------------------- Sections */
+  section { margin-top: 9mm; }
+  h2 {
+    margin: 0 0 3mm;
+    padding-bottom: 1.5mm;
+    border-bottom: 0.5pt solid var(--line);
+    font-size: 12.5pt;
+    font-weight: 600;
+    break-after: avoid;
+  }
+  h2 .number { display: inline-block; width: 7mm; color: var(--accent); }
+  h3 { margin: 4mm 0 1.5mm; font-size: 9.5pt; font-weight: 600; break-after: avoid; }
+  h3 span { font-weight: 400; color: var(--muted); }
+  .note { color: var(--muted); font-size: 8.5pt; }
+  .gap { margin-top: 2.5mm; }
+
+  /* A severity: a coloured dot, then the word. The word carries the meaning. */
+  .dot { display: inline-block; width: 2.1mm; height: 2.1mm; margin-right: 1.4mm; border-radius: 50%; }
+  .low { background: var(--low); }
+  .medium { background: var(--medium); }
+  .high { background: var(--high); }
+  .critical { background: var(--critical); }
+
+  /* Who wrote the summary. Dashed means "a draft nobody has reviewed yet",
+     the same sign the app uses for an AI suggestion. */
+  .written-by {
+    margin-bottom: 3mm;
+    padding: 1.8mm 3mm;
+    border: 0.5pt solid var(--line);
+    border-radius: 1mm;
+    font-size: 8.5pt;
+    color: var(--muted);
+  }
+  .written-by.draft { border: 0.75pt dashed var(--accent); }
+  .summary { white-space: pre-line; font-size: 10pt; line-height: 1.55; }
+  .severity { margin-top: 3.5mm; padding: 2.5mm 3.5mm; background: var(--wash); border-radius: 1mm; break-inside: avoid; }
+  .severity strong { font-weight: 600; }
+
+  /* --------------------------------------------------------------- Tables */
+  /* "fixed" makes each column exactly as wide as its heading says; the one
+     heading without a width takes whatever is left. */
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  th {
+    padding: 0 2mm 1.2mm 0;
+    border-bottom: 0.75pt solid var(--text);
+    font-size: 7.5pt;
+    font-weight: 600;
+    text-align: left;
+    color: var(--muted);
+  }
+  td { padding: 1.7mm 2mm 1.7mm 0; border-bottom: 0.5pt solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+  tr { break-inside: avoid; }
+  thead { display: table-header-group; } /* the headings repeat if a table runs onto a new page */
+  .numbers { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .mono { font: 400 8.5pt/1.5 "IBM Plex Mono", "DejaVu Sans Mono", monospace; }
+  .small { font-size: 8.5pt; color: var(--muted); }
+  .right { text-align: right; padding-right: 0; }
+
+  /* The tactics in the order they appeared, as a numbered row. */
+  .tactics { margin: 0 0 4mm; padding: 0; list-style: none; counter-reset: tactic; }
+  .tactics li {
+    display: inline-block;
+    margin: 0 1.5mm 1.5mm 0;
+    padding: 0.8mm 2.5mm 0.8mm 1mm;
+    border: 0.5pt solid var(--line);
+    border-radius: 1mm;
+    font-size: 8.5pt;
+    counter-increment: tactic;
+  }
+  .tactics li::before {
+    content: counter(tactic);
+    display: inline-block;
+    min-width: 4mm;
+    margin-right: 1.2mm;
+    text-align: center;
+    font-weight: 600;
+    color: var(--accent);
+  }
+
+  .columns { display: grid; grid-template-columns: 1fr 1fr; column-gap: 8mm; }
+  ul, ol { margin: 0; padding-left: 5mm; }
+  li { margin-bottom: 1.2mm; }
+  ol li::marker { font-weight: 600; color: var(--accent); }
+  ol li { padding-left: 1mm; break-inside: avoid; }
+
+  .created { margin-top: 2.5mm; font-size: 8pt; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<header>
+  <p class="eyebrow">Incident report</p>
+  <h1>Incident #{{ incident.id }}</h1>
+  <p class="lede">
+    {{ incident.alerts }} alert{{ "" if incident.alerts == 1 else "s" }}
+    {%- if incident.hosts %} on {{ incident.hosts | join(", ") }}{% endif %}
+    {%- if incident.users %} involving {{ incident.users | join(", ") }}{% endif %}, {{ date }}
+  </p>
+</header>
+
+<dl class="facts">
+  <div><dt>Highest alert severity</dt><dd><span class="dot {{ incident.severity | lower }}"></span>{{ incident.severity }}</dd></div>
+  <div><dt>Status</dt><dd>{{ incident.status }}{% if incident.open_alerts %} ({{ incident.open_alerts }} of {{ incident.alerts }} alerts undecided){% endif %}</dd></div>
+  <div><dt>First alert (UTC)</dt><dd class="numbers">{{ start }}</dd></div>
+  <div><dt>Last alert (UTC)</dt><dd class="numbers">{{ end }}</dd></div>
+  <div><dt>Duration</dt><dd>{{ duration }}</dd></div>
+  <div><dt>Alerts</dt><dd>{{ incident.alerts }}</dd></div>
+  <div><dt>Hosts</dt><dd>{{ incident.hosts | join(", ") or "None identified" }}</dd></div>
+  <div><dt>Users</dt><dd>{{ incident.users | join(", ") or "None identified" }}</dd></div>
+</dl>
+<p class="created">
+  Report created on {{ generated }} by Sentinel. Sentinel is a training tool: its logs are simulated,
+  and no real system was attacked.
+</p>
+
+{% if all_false_positive %}
+<p class="notice">
+  An analyst closed every alert in this incident as a false positive: harmless activity that a
+  detection rule mistook for an attack. The sections below record what the rules saw.
+</p>
+{% endif %}
+
+<section>
+  <h2><span class="number">1</span>Executive summary</h2>
+  <p class="written-by{{ '' if prose.reviewed else ' draft' }}">{{ prose.written_by }}</p>
+  <p class="summary">{{ prose.summary }}</p>
+  <p class="severity">
+    <span class="dot {{ prose.severity | lower }}"></span><strong>Incident severity: {{ prose.severity }}.</strong>
+    {{ prose.severity_reason }}
+  </p>
+</section>
+
+<section>
+  <h2><span class="number">2</span>Timeline</h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 18mm">Time (UTC)</th>
+        <th style="width: 37mm">ATT&amp;CK tactic</th>
+        <th>What was detected</th>
+        <th style="width: 27mm">Host</th>
+        <th style="width: 19mm">User</th>
+        <th style="width: 20mm">Severity</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for step in steps %}
+      <tr>
+        <td class="numbers">{{ step.time }}</td>
+        <td>{{ step.tactics | join(", ") }}</td>
+        <td>{{ step.title }}</td>
+        <td>{{ step.host }}</td>
+        <td>{{ step.user }}</td>
+        <td><span class="dot {{ step.severity | lower }}"></span>{{ step.severity }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="note gap">
+    Each row is one alert: a detection rule matching the logs. The tactic is the attacker's goal at that step.
+    {%- if false_positives %}
+    {{ false_positives }} alert{{ " was" if false_positives == 1 else "s were" }} closed as
+    {{ "a false positive" if false_positives == 1 else "false positives" }} (harmless activity) and
+    {{ "is" if false_positives == 1 else "are" }} left out of this report.
+    {%- endif %}
+  </p>
+</section>
+
+<section>
+  <h2><span class="number">3</span>Affected hosts and users</h2>
+  <div class="columns">
+    <div>
+      <h3 style="margin-top: 0">Hosts <span>the machines the alerts happened on</span></h3>
+      {% if incident.hosts %}
+      <ul>{% for host in incident.hosts %}<li>{{ host }}</li>{% endfor %}</ul>
+      {% else %}
+      <p class="note">None identified.</p>
+      {% endif %}
+    </div>
+    <div>
+      <h3 style="margin-top: 0">Users <span>the accounts the alerts are about</span></h3>
+      {% if incident.users %}
+      <ul>{% for user in incident.users %}<li>{{ user }}</li>{% endfor %}</ul>
+      {% else %}
+      <p class="note">None identified.</p>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="number">4</span>Indicators of compromise</h2>
+  {% if indicators %}
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 30mm">Type</th>
+        <th>Indicator</th>
+        <th style="width: 62mm">First seen in the alert</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for indicator in indicators %}
+      <tr>
+        <td>{{ indicator.kind }}</td>
+        <td class="mono">{{ indicator.value }}</td>
+        <td class="small">{{ indicator.seen_in }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="note gap">
+    Indicators are evidence that can be searched for or blocked. Addresses are defanged ([.] for a dot,
+    hxxp for http) so that nothing in this report can be opened by accident.
+  </p>
+  {% else %}
+  <p class="note">No addresses, files or accounts were found in the evidence of these alerts.</p>
+  {% endif %}
+</section>
+
+<section>
+  <h2><span class="number">5</span>MITRE ATT&amp;CK techniques</h2>
+  <p class="note" style="margin-bottom: 2mm">Tactics (the attacker's goals), in the order they first appeared:</p>
+  <ol class="tactics">{% for tactic in incident.tactics %}<li>{{ tactic }}</li>{% endfor %}</ol>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 24mm">ID</th>
+        <th>Technique (the method used)</th>
+        <th class="right" style="width: 16mm">Alerts</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for technique in techniques %}
+      <tr>
+        <td class="numbers">{{ technique.id }}</td>
+        <td>{{ technique.name }}</td>
+        <td class="numbers right">{{ technique.alerts }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2><span class="number">6</span>Recommended actions</h2>
+  <h3 style="margin-top: 0">Containment <span>stop the attack spreading, most urgent first</span></h3>
+  {% if prose.containment %}
+  <ol>{% for action in prose.containment %}<li>{{ action }}</li>{% endfor %}</ol>
+  {% else %}
+  <p class="note">The analyst listed no containment steps.</p>
+  {% endif %}
+  <h3>Eradication and recovery <span>remove what the attacker left and return to normal</span></h3>
+  {% if prose.recovery %}
+  <ol>{% for action in prose.recovery %}<li>{{ action }}</li>{% endfor %}</ol>
+  {% else %}
+  <p class="note">The analyst listed no recovery steps.</p>
+  {% endif %}
+</section>
+
+</body>
+</html>
