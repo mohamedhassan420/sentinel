@@ -68,7 +68,7 @@ One Python backend moves data through these stages and one React app shows each 
 | PDF reports | WeasyPrint | The report is designed as a web page and printed to PDF. |
 | Frontend | React, TypeScript, Vite, Tailwind CSS, shadcn/ui | The most common frontend stack in job adverts. |
 | Tests | pytest: 223 tests | Every rule is tested both ways, and GitHub Actions runs everything on each push. |
-| Delivery | Docker, deployed on Hugging Face Spaces (free) | One command runs it anywhere. The public site runs in demo mode. |
+| Delivery | Docker, deployed on Render's free tier | One command runs it anywhere. The public site runs in demo mode. |
 
 ## Detection coverage
 
@@ -220,7 +220,7 @@ The frontend dev server on http://localhost:5173 passes `/api` requests to the b
 
 The PDF step needs the Pango library, which Windows does not have. Run natively, everything else works and **Download report** says to use Docker. One test (printing a real PDF) is skipped on a computer without Pango. It runs on GitHub, where a skip would count as a failure.
 
-**The public demo** runs on a free Docker Space on [Hugging Face](https://huggingface.co/spaces). After both checks pass on `main`, the `deploy` job in [.github/workflows/ci.yml](.github/workflows/ci.yml) pushes the Space one fresh commit. That commit holds the Dockerfile, `backend/`, `frontend/` and the Space's description ([deploy/huggingface-space.md](deploy/huggingface-space.md)), and nothing else. The job also adds lines to that copy of the Dockerfile that force demo mode on, and that let huggingface.co, and no other site, show the app in its page. A free Space sleeps after two days without visitors, and its log store starts empty each time it restarts.
+**The public demo** is described by [render.yaml](render.yaml): one free web service on [Render](https://render.com), built from the Dockerfile, in demo mode, redeployed after the tests pass on `main`. The free service sleeps after 15 minutes without visitors, so the first page can take about a minute to load, and its log store starts empty each time it wakes.
 
 ## Layout
 
@@ -237,7 +237,7 @@ backend/
   tests/
 frontend/         the React app
 docs/             plan, decisions, learning notes, threat model, interview prep, demo script and screenshots
-deploy/          the Hugging Face Space's description (the deploy job is in .github/workflows/ci.yml)
+render.yaml       the public deployment
 ```
 
 ## How it was built

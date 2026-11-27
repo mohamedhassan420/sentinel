@@ -1,0 +1,19 @@
+# The public demo on Render (render.com), described as a file so the site
+# can be rebuilt from this repo alone. Render calls this file a Blueprint.
+# To use it: in the Render dashboard choose New > Blueprint and pick this repo.
+services:
+  - type: web
+    name: sentinel-soc
+    runtime: docker # build the Dockerfile in this repo
+    plan: free
+    region: frankfurt
+    # Render asks this address whether the app is up before sending visitors to it.
+    healthCheckPath: /api/health
+    # Publish a new version only after the tests on GitHub have passed.
+    autoDeployTrigger: checksPass
+    envVars:
+      # Demo mode: stored AI answers, and the AI service is never contacted.
+      # Never add ANTHROPIC_API_KEY here. The site is open to everyone, and
+      # every visitor would be spending from that key.
+      - key: SENTINEL_DEMO
+        value: "1"

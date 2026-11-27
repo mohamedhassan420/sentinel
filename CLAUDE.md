@@ -27,7 +27,7 @@ sentinel/
     INTERVIEW_PREP.md  DEMO_SCRIPT.md  LINKEDIN_POST.md   # the CV deliverables
     screenshots/     # the README's images
   backend/  frontend/  ...   # created in Phase 1, as shown in PLAN.md
-  deploy/            # the Hugging Face Space's description (deploy job in .github/workflows/ci.yml)
+  render.yaml        # the public deployment on Render
 ```
 
 Keep the project root tidy: no stray scripts, temp files or duplicate docs. When Mohamed makes a decision (a name, a colour scheme, a host), add one dated line to `docs/DECISIONS.md`.
@@ -70,7 +70,7 @@ Mohamed is on the Claude Max plan, so quality comes first: every build phase run
 - **Frontend:** React + TypeScript + Vite, Tailwind CSS, shadcn/ui, Recharts, lucide icons.
 - **AI:** the official `anthropic` Python SDK. Model `claude-opus-5-5`, read from the env var `SENTINEL_MODEL` with that as the default. Use structured outputs (`output_config.format` with a JSON schema) for the triage result: summary, severity, severity_reason, next_steps, confidence. Check `stop_reason` before reading content. On `"refusal"` or any error, fall back to the rule's own explanation. Read the claude-api skill or the official docs before writing SDK code, and never guess parameter names.
 - **Running locally:** run the app through Docker (`docker compose up`) so Mohamed never has to install WeasyPrint's system libraries by hand. Native Python and Node are for your development and tests.
-- **Delivery:** one Docker image serving the API and the built frontend. GitHub Actions runs pytest and the frontend build on every push. The public deployment is a free Docker Space on Hugging Face, in demo mode, pushed by the CI's `deploy` job after the checks pass on `main`.
+- **Delivery:** one Docker image serving the API and the built frontend. GitHub Actions runs pytest and the frontend build on every push. The public deployment is on Render's free tier, in demo mode.
 
 ## The API key (important for Mohamed)
 

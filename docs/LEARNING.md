@@ -278,7 +278,7 @@ The workstation, WKS-FIN-03: disconnect it from the network. That one action cut
 - **An About page** and a footer on every page. The About page shows the five steps from attack to report using real pieces of the app, says what is simulated and what is real, and says who built it and how.
 - **A UI review** of every screen at phone, tablet and desktop width. It found little: a clearer yellow for Medium so it is not taken for High's orange, a page title for each screen, and a link from the empty dashboard to the About page.
 - **A threat model** (`docs/THREAT_MODEL.md`) and a manual security review of Sentinel's own code, with five fixes.
-- **Deployment files.** `render.yaml` described the public site on Render, a hosting service with a free tier (later replaced by Hugging Face, see part 3). The Docker image now listens on whichever port the host names.
+- **Deployment files.** `render.yaml` describes the public site on Render, a hosting service with a free tier. The Docker image now listens on whichever port the host names.
 - **The CV deliverables**: a new README with screenshots and a GIF, a demo video script, an interview prep page and a LinkedIn post draft, all in `docs/`.
 - **Tests.** 223 now. The four new ones cover the security fixes.
 
@@ -344,24 +344,3 @@ A refused request costs almost nothing, and the visitor can click again. A queue
 
 **Why not fix the Low findings too?**
 They need live mode on the owner's own machine plus a trick like DNS rebinding. The public site never runs live mode. Fixing them is real work for a small risk, so they are recorded with their suggested fixes. That is a risk decision, and writing it down is part of the job.
-
-## Phase 6, part 3: the public demo moves to Hugging Face
-
-### What was built
-
-Render refused the card, so the public demo is now a free Docker Space on Hugging Face, which needs no card. A Space is a small git repository that Hugging Face builds and runs. A new `deploy` job at the end of the GitHub checks pushes it, from `main` only and only after the tests and the frontend build pass. The job builds a fresh copy containing only the Dockerfile, `backend/` and `frontend/`, plus the Space's description file. It adds one line to the copy's Dockerfile that forces demo mode on.
-
-### Why it works this way
-
-- **One fresh commit, not the whole history.** Hugging Face refuses images in a plain git push, and the README's screenshots are images. Sending only what the build needs avoids that, and keeps the docs off the Space.
-- **Demo mode is forced in the deployed copy itself.** It does not depend on someone remembering a setting, so no visitor can ever spend API credit.
-- **One exception to "never framed".** Hugging Face shows each Space inside a frame on its own page. The deployed copy lets huggingface.co, and no other site, frame Sentinel. Everywhere else the old rule stands.
-- **The token is a secret.** The Hugging Face token lives only in GitHub's encrypted secrets, which GitHub hides in the job's log, just as the Claude key lives only in `.env`.
-
-### Check questions
-
-**How does code get from your laptop to the live site?**
-I push to GitHub. The checks run the tests and build the frontend. If both pass on `main`, the deploy job pushes a clean copy to the Hugging Face Space, which builds the Docker image and restarts. A failing test means nothing is deployed.
-
-**You loosened a security header. Why is that acceptable?**
-Clickjacking needs a hostile site to frame the app. Only huggingface.co is allowed, it is the host that already runs the app, and the demo holds only simulated data. The exception exists only in the deployed copy. I would still not allow any other site.
