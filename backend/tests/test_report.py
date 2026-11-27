@@ -281,10 +281,48 @@ def test_defanging_makes_addresses_unclickable():
 def test_only_one_report_is_made_at_a_time(client, monkeypatch):
     client.post("/api/simulate/full_chain")
     monkeypatch.setattr(report, "to_pdf", lambda html: b"%PDF-1.7 a test page")
-    monkeypatch.setattr(main, "REPORT_WAIT_SECONDS", 0.05)
     with main.REPORT_LOCK:  # another report is being made
         response = client.get("/api/incidents/1/report.pdf")
     assert response.status_code == 503
     assert "busy" in response.json()["detail"]
     # Once that one is finished, the next request gets its report.
     assert client.get("/api/incidents/1/report.pdf").status_code == 200
+
+
+def test_a_report_request_does_not_wait_in_line(client, monkeypatch):
+    # Scan finding F2: a request that waited for the lock held a database
+    # connection and a worker thread, so a few dozen of them stalled every
+    # page. Now it is refused at once, before the database is touched.
+    client.post("/api/simulate/full_chain")
+    read = []
+    monkeypatch.setattr(main, "_incident_detail", lambda session, incident_id: read.append(incident_id))
+    with main.REPORT_LOCK:  # another report is being made
+        response = client.get("/api/incidents/1/report.pdf")
+    assert response.status_code == 503
+    assert read == []  # the incident was never read
+
+
+def test_a_huge_incident_makes_a_short_report():
+    # Scan finding F3: repeated scenario runs join one incident, and every
+    # one of its alerts used to become a row in the PDF.
+    alerts = [
+        Alert(id=n, time=T, rule_id="rule", title=f"Alert {n}", severity="High", attack_tactics=["Execution"],
+              attack_techniques=["T1059.001"], host="WKS-1", user="a.khan", log_ids=[])
+        for n in range(1, 251)
+    ]
+    detail = IncidentDetail(
+        incident=IncidentInfo(
+            id=1, start_time=T, end_time=T, severity="High", status="Open", hosts=["WKS-1"], users=["a.khan"],
+            tactics=["Execution"], alerts=len(alerts), open_alerts=len(alerts),
+        ),
+        timeline=[TimelineStep(alert=alert, evidence=None) for alert in alerts],
+        techniques=[],
+        indicators=[Indicator(kind="File name", value=f"file{n}.docm", alert_id=1, alert_title="Alert 1")
+                    for n in range(250)],
+    )
+    html = report.render_html(detail, None, CREATED)
+    assert html.count("<tr>") <= 210  # two tables of at most 100 rows, plus headers
+    assert "Alert 100<" in html and "Alert 101<" not in html
+    words = " ".join(html.split())  # the template wraps its notes over lines
+    assert "150 later alerts are left out" in words
+    assert "150 more are left out" in words

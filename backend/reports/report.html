@@ -233,6 +233,10 @@
   </table>
   <p class="note gap">
     Each row is one alert: a detection rule matching the logs. The tactic is the attacker's goal at that step.
+    {%- if more_steps %}
+    The first {{ steps | length }} alerts are listed; {{ more_steps }} later
+    alert{{ " is" if more_steps == 1 else "s are" }} left out to keep the report short and can be seen in Sentinel.
+    {%- endif %}
     {%- if false_positives %}
     {{ false_positives }} alert{{ " was" if false_positives == 1 else "s were" }} closed as
     {{ "a false positive" if false_positives == 1 else "false positives" }} (harmless activity) and
@@ -287,6 +291,10 @@
   <p class="note gap">
     Indicators are evidence that can be searched for or blocked. Addresses are defanged ([.] for a dot,
     hxxp for http) so that nothing in this report can be opened by accident.
+    {%- if more_indicators %}
+    The first {{ indicators | length }} are listed; {{ more_indicators }}
+    more {{ "is" if more_indicators == 1 else "are" }} left out to keep the report short.
+    {%- endif %}
   </p>
   {% else %}
   <p class="note">No addresses, files or accounts were found in the evidence of these alerts.</p>

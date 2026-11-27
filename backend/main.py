@@ -72,9 +72,10 @@ TRIAGE_LOCK = threading.Lock()
 # Laying out a PDF is the heaviest work Sentinel does, so only one report is
 # made at a time. Without this, a burst of "Download report" requests would
 # each claim memory at once and could bring a small server down. A request
-# that has waited this many seconds is told to try again.
+# that arrives while a report is being made is told to try again at once.
+# It does not wait in line: a waiting request would hold a worker thread
+# and a database connection, and a few dozen of them would stall every page.
 REPORT_LOCK = threading.Lock()
-REPORT_WAIT_SECONDS = 15
 
 # The most log lines the store may hold. Anyone who can open the site can run
 # scenarios, so without a limit the database would grow until the disk was
@@ -88,7 +89,14 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Sentinel", lifespan=lifespan)
+# The biggest request body Sentinel accepts. Without a limit, one huge
+# request is read whole into memory before anything checks it, and can crash
+# the small public server. The largest real body, an edited incident summary,
+# stays under this even in the worst case (9,000 characters, each written as
+# a 6-byte JSON escape). Anything bigger is refused with "413 Content Too Large".
+MAX_BODY_BYTES = 64 * 1024
+
+app = FastAPI(title="Sentinel", lifespan=lifespan, max_body_size=MAX_BODY_BYTES)
 
 
 # -------------------------------------------------------- Browser safeguards
@@ -511,11 +519,13 @@ def review_summary(incident_id: IncidentId, change: SummaryReview, session: Sess
 def incident_report(incident_id: IncidentId, session: SessionDep) -> Response:
     """The incident as a PDF report. It uses the stored summary if there is
     one (the analyst's version once reviewed), and plain facts if not."""
-    detail = _incident_detail(session, incident_id)
-    html = report.render_html(detail, _get_summary(session, incident_id), datetime.now(timezone.utc))
-    if not REPORT_LOCK.acquire(timeout=REPORT_WAIT_SECONDS):
-        raise HTTPException(status_code=503, detail="Sentinel is busy making other reports. Try again in a moment.")
+    # The lock is taken first, before the database is read, so a refused
+    # request has used nothing but this one check.
+    if not REPORT_LOCK.acquire(blocking=False):
+        raise HTTPException(status_code=503, detail="Sentinel is busy making another report. Try again in a moment.")
     try:
+        detail = _incident_detail(session, incident_id)
+        html = report.render_html(detail, _get_summary(session, incident_id), datetime.now(timezone.utc))
         pdf = report.to_pdf(html)
     except report.Unavailable as problem:
         raise HTTPException(status_code=503, detail=str(problem))
