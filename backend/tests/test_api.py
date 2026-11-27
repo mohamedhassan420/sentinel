@@ -295,6 +295,17 @@ def test_every_answer_carries_the_security_headers(client):
     assert docs.status_code == 200
     assert "Content-Security-Policy" not in docs.headers
     assert docs.headers["X-Frame-Options"] == "DENY"
+    assert "frame-ancestors 'none'" in headers["Content-Security-Policy"]
+
+
+def test_only_the_named_host_may_frame_the_app(client, monkeypatch):
+    # The Hugging Face deployment lets huggingface.co show the app in a frame.
+    monkeypatch.setattr(main, "FRAME_ANCESTORS", "https://huggingface.co")
+    headers = client.get("/api/health").headers
+    assert "frame-ancestors https://huggingface.co" in headers["Content-Security-Policy"]
+    assert "X-Frame-Options" not in headers  # it would block that site too
+    # The documentation page has no content policy, so it stays unframeable.
+    assert client.get("/docs").headers["X-Frame-Options"] == "DENY"
 
 
 def test_a_write_set_off_by_another_website_is_refused(client):

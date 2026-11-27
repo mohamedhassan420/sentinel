@@ -26,7 +26,7 @@ There are no user accounts, passwords or personal data. Every log line is simula
 ## Where trust changes hands
 
 ```
-visitor's browser ──HTTPS──► Render's proxy ──► one container: FastAPI + SQLite file
+visitor's browser ──HTTPS──► Hugging Face's proxy ──► one container: FastAPI + SQLite file
                                                    │
         log text (untrusted) ──► page, PDF, AI     └──► Anthropic API (live mode only,
                                                         never on the public site)
@@ -41,15 +41,15 @@ The three places untrusted text crosses into something that could act on it are 
 | 1 | **Prompt injection.** Log text tells the AI to lower a severity or close the alert. | Instructions and logs travel separately; logs sit in an `<evidence>` block they cannot close; the AI is told the block is evidence; its answer must fit a fixed shape and it has no tools; nothing changes until a person accepts, and a suggestion below the rule's severity carries a warning. | `backend/ai/guard.py`, `backend/models.py`, tests in `test_ai.py` |
 | 2 | **Cross-site scripting (XSS).** Log text runs as script in the page. | React shows all log text as plain text; the code never builds HTML from data. A Content Security Policy is the second layer: the browser runs no script that did not come from Sentinel's own files. | `frontend/src`, `backend/main.py` |
 | 3 | **HTML injection into the PDF.** Log text becomes a tag in the report and makes the server fetch an address or read a file. | The template escapes everything; the PDF builder may load only the font files beside the template and nothing from the network. | `backend/reports/report.py` |
-| 4 | **The API key leaks.** | It lives only in the `ANTHROPIC_API_KEY` environment variable. `.env` is in `.gitignore` and `.dockerignore`, the code never logs or returns it, and the git history has been searched for keys. The public site has no key at all. | `.gitignore`, `backend/ai/triage.py`, `render.yaml` |
-| 5 | **Someone else spends the AI credit.** | The public site is forced into demo mode and never contacts the API. Locally, Docker publishes the app to this computer only; each alert is triaged once and stored; each request has a token limit and carries at most 50 log lines; and writes set off by another website are refused. | `render.yaml`, `compose.yaml`, `backend/main.py`, `backend/ai/guard.py` |
+| 4 | **The API key leaks.** | It lives only in the `ANTHROPIC_API_KEY` environment variable. `.env` is in `.gitignore` and `.dockerignore`, the code never logs or returns it, and the git history has been searched for keys. The public site has no key at all. | `.gitignore`, `backend/ai/triage.py`, `.github/workflows/ci.yml` |
+| 5 | **Someone else spends the AI credit.** | The public site is forced into demo mode and never contacts the API. Locally, Docker publishes the app to this computer only; each alert is triaged once and stored; each request has a token limit and carries at most 50 log lines; and writes set off by another website are refused. | `.github/workflows/ci.yml` (the deploy job), `compose.yaml`, `backend/main.py`, `backend/ai/guard.py` |
 | 6 | **Cross-site request forgery (CSRF).** A website the owner visits makes their browser run scenarios or request triages on `localhost`. | Every request that changes data is refused unless the browser says it came from Sentinel's own page (the `Sec-Fetch-Site` header). | `backend/main.py` |
 | 7 | **Filling the disk or exhausting the server.** | The log store is emptied when it reaches 20,000 lines; every filter and list has a length or size limit; one PDF is built at a time; one AI answer is worked out at a time. | `backend/main.py` |
 | 8 | **SQL injection.** | Every query goes through SQLModel with bound parameters; search text is escaped so `%` and `_` match literally; numbers are range-checked. | `backend/main.py` |
 | 9 | **Tampering with evidence.** | The API can change an alert's status and the analyst's review, and nothing else. Logs, alerts and the AI's original words cannot be edited. Status and severity accept only their fixed values. | `backend/main.py`, `backend/models.py` |
 | 10 | **Reading other files through a rule name.** | The name is looked up among the rules loaded at startup and is never used to open a file. | `backend/main.py`, `test_api.py` |
 | 11 | **A hostile rule file.** | Rules are read with YAML's safe loader. A rule's condition is parsed into a tree and checked against a short allow-list; it is never run as code. | `backend/engine/detection.py` |
-| 12 | **Clickjacking.** Another site shows Sentinel in a hidden frame and tricks the visitor into pressing its buttons. | The app forbids being framed. | `backend/main.py` |
+| 12 | **Clickjacking.** Another site shows Sentinel in a hidden frame and tricks the visitor into pressing its buttons. | The app forbids being framed. The one exception is the public demo, where huggingface.co may frame it, because Hugging Face shows every Space inside its own page. No other site may. | `backend/main.py` |
 | 13 | **A vulnerable or poisoned dependency.** | Python packages are pinned to exact versions and npm packages by a lock file. `pip-audit` and `npm audit` both report no known vulnerabilities (27 Nov 2026). The container runs as an ordinary user, and the GitHub workflow has read-only access to the repo. | `backend/requirements.txt`, `frontend/package-lock.json`, `Dockerfile`, `.github/workflows/ci.yml` |
 
 ## Fixed in Phase 6

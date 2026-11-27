@@ -72,7 +72,7 @@ The simulator can also run a **"full attack chain"**: phishing â†’ PowerShell â†
 | Styling and parts | Tailwind CSS + shadcn/ui + Recharts | Clean, consistent components and charts. |
 | Tests | pytest + one sample log per rule that must fire, and one that must not | Rules are tested against true and false positives. |
 | Packaging | Docker | One command runs the whole app on any machine. |
-| Hosting | Render (or Fly.io) free tier, one container | A public link for the CV. |
+| Hosting | Hugging Face Spaces (free Docker Space), one container | A public link for the CV. |
 | Automation | GitHub Actions | Runs the tests on every change; green "passing" badge in the README. |
 
 **Two settings that protect Mohamed:**
