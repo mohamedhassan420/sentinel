@@ -96,17 +96,35 @@ function OpenAlerts({ board }: { board: Dashboard }) {
       <h2 id="open-heading" className="sr-only">
         Open alerts
       </h2>
-      <p>
-        <span className="text-5xl font-semibold tracking-tight">{open}</span>
-        <span className="ml-3 text-lg font-medium">open {open === 1 ? 'alert' : 'alerts'}</span>
-      </p>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {total === 0
-          ? 'No rule has fired yet. Run a scenario to see the detection rules at work.'
-          : open === 0
-            ? 'The queue is clear: every alert has been closed.'
-            : 'New or in progress: nobody has yet decided whether these are real attacks.'}
-      </p>
+      <div className="grid gap-x-6 gap-y-4 sm:grid-cols-[minmax(0,1fr)_auto]">
+        <div>
+          <p>
+            <span className="text-5xl font-semibold tracking-tight">{open}</span>
+            <span className="ml-3 text-lg font-medium">open {open === 1 ? 'alert' : 'alerts'}</span>
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {total === 0
+              ? 'No rule has fired yet. Run a scenario to see the detection rules at work.'
+              : open === 0
+                ? 'The queue is clear: every alert has been closed.'
+                : 'New or in progress: nobody has yet decided whether these are real attacks.'}
+          </p>
+        </div>
+        {/* The same alerts counted as attacks: related alerts are grouped into one incident. */}
+        <a
+          href="#/incidents"
+          title="See the open incidents"
+          className="group rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:border-t max-sm:pt-3 sm:border-l sm:pl-6"
+        >
+          <p className="sm:pt-2.5">
+            <span className="text-3xl font-semibold tracking-tight group-hover:text-primary">{board.open_incidents}</span>
+            <span className="ml-2.5 font-medium group-hover:underline">
+              open {board.open_incidents === 1 ? 'incident' : 'incidents'}
+            </span>
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground sm:max-w-44">Related alerts, grouped into one attack each.</p>
+        </a>
+      </div>
 
       {/* The mix at a glance: one thin bar, each severity as wide as its share. */}
       <div aria-hidden className="mt-5 flex h-2 gap-0.5 overflow-hidden rounded-full bg-muted">

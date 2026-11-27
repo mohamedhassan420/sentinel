@@ -27,7 +27,8 @@ export type LogFilters = {
 
 export type FilterOptions = { sources: string[]; event_ids: number[]; scenarios: string[] }
 
-export type RunResult = { added: number; attack: number; background: number; alerts: number }
+// `incidents` is how many incidents the new alerts were grouped into.
+export type RunResult = { added: number; attack: number; background: number; alerts: number; incidents: number }
 
 // Most urgent first: the order the dashboard and the filters list them in.
 export const SEVERITIES = ['Critical', 'High', 'Medium', 'Low'] as const
@@ -51,6 +52,7 @@ export type Alert = {
   user: string
   log_ids: number[] // the logs that made the rule fire
   status: Status
+  incident_id: number | null // the incident this alert was grouped into
 }
 
 export type AlertPage = { total: number; alerts: Alert[] }
@@ -105,9 +107,62 @@ export type TriageResult = { triage: Triage | null; problem: string }
 // The analyst's final word. Sending back what the AI said accepts it.
 export type Review = { severity: Severity; summary: string; next_steps: string[] }
 
+// A group of related alerts: one attack, seen as several detections. Every
+// field is worked out by the server from the incident's alerts.
+export type Incident = {
+  id: number
+  start_time: string // the first alert
+  end_time: string // the latest alert
+  severity: Severity // the highest among its alerts
+  status: 'Open' | 'Closed' // Open while any alert still needs a decision
+  hosts: string[]
+  users: string[]
+  tactics: string[] // in the order the attack reached them
+  alerts: number
+  open_alerts: number
+}
+
+export type IncidentPage = { total: number; incidents: Incident[] }
+
+// An indicator of compromise: evidence that can be searched for or blocked.
+export type Indicator = { kind: string; value: string; alert_id: number; alert_title: string }
+
+// Everything on an incident's page. `timeline` is every alert, oldest
+// first, each with the log line that set it off.
+export type IncidentDetail = {
+  incident: Incident
+  timeline: { alert: Alert; evidence: Log | null }[]
+  techniques: (Technique & { alerts: number })[]
+  indicators: Indicator[]
+}
+
+// The AI's summary of one incident, and what the analyst decided about it.
+// It works like Triage, with two lists of steps in place of one.
+export type IncidentSummary = {
+  incident_id: number
+  summary: string
+  severity: Severity
+  severity_reason: string
+  containment: string[] // what stops the attack spreading, most urgent first
+  recovery: string[] // what removes the attacker's changes and returns to normal
+  confidence: 'Low' | 'Medium' | 'High'
+  source: 'live' | 'demo'
+  model: string | null
+  review: 'Not reviewed' | 'Accepted' | 'Edited'
+  final_severity: Severity | null
+  final_summary: string | null
+  final_containment: string[] | null
+  final_recovery: string[] | null
+}
+
+export type SummaryResult = { summary: IncidentSummary | null; problem: string }
+
+export type SummaryReview = { severity: Severity; summary: string; containment: string[]; recovery: string[] }
+
 export type Dashboard = {
   open_by_severity: Record<Severity, number>
   by_status: Record<Status, number>
+  open_incidents: number // incidents with at least one alert still waiting
   tactics: { tactic: string; alerts: number }[] // all 14, in the order an attack moves
   techniques: (Technique & { alerts: number })[] // only the ones seen
 }
@@ -174,6 +229,46 @@ export function getTriage(alertId: number, signal: AbortSignal) {
 
 export function reviewTriage(alertId: number, review: Review) {
   return patch<Triage>(`/api/alerts/${alertId}/triage`, review)
+}
+
+export function getIncidents(filters: { status?: Incident['status'] }, signal: AbortSignal) {
+  const params = new URLSearchParams(filters.status ? { status: filters.status } : {})
+  return request<IncidentPage>(`/api/incidents?${params}`, { signal })
+}
+
+export function getIncident(id: number, signal: AbortSignal) {
+  return request<IncidentDetail>(`/api/incidents/${id}`, { signal })
+}
+
+// The incident's AI summary. Like a triage, the first call works it out and
+// later calls get the stored one back.
+export function getIncidentSummary(incidentId: number, signal?: AbortSignal) {
+  return request<SummaryResult>(`/api/incidents/${incidentId}/summary`, { method: 'POST', signal })
+}
+
+export function reviewIncidentSummary(incidentId: number, review: SummaryReview) {
+  return patch<IncidentSummary>(`/api/incidents/${incidentId}/summary`, review)
+}
+
+// The incident's PDF report, as a file held in memory for the browser to save.
+export async function getReport(incidentId: number): Promise<Blob> {
+  let response: Response
+  try {
+    response = await fetch(`/api/incidents/${incidentId}/report.pdf`)
+  } catch {
+    throw new Error('Could not reach the Sentinel server. Check it is running, then try again.')
+  }
+  if (!response.ok) {
+    // When the server cannot make a PDF it says why in plain words.
+    const detail: unknown = await response.json().then(
+      (body) => body.detail,
+      () => null,
+    )
+    throw new Error(
+      typeof detail === 'string' ? detail : `The Sentinel server answered with an error (${response.status}).`,
+    )
+  }
+  return response.blob()
 }
 
 export function getDashboard(signal: AbortSignal) {

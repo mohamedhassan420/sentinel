@@ -39,3 +39,23 @@ export function eventName(log: Log) {
 export function plural(count: number, word: string) {
   return `${count} ${word}${count === 1 ? '' : 's'}`
 }
+
+// The time from one moment to another in words: "9 s", "28 min", "1 h 5 min".
+export function timeBetween(startIso: string, endIso: string) {
+  const seconds = Math.round((new Date(endIso).getTime() - new Date(startIso).getTime()) / 1000)
+  if (seconds < 60) return `${seconds} s`
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) return `${minutes} min`
+  return minutes % 60 === 0 ? `${minutes / 60} h` : `${Math.floor(minutes / 60)} h ${minutes % 60} min`
+}
+
+// "a.khan on WKS-FIN-03": who and where, for an incident's one-line description.
+export function whoAndWhere(users: string[], hosts: string[]) {
+  if (hosts.length === 0) return users.join(', ')
+  return `${users.join(', ')} on ${hosts.join(', ')}`
+}
+
+// Do two times from the server fall on the same day, where the reader is?
+export function sameDay(iso: string, otherIso: string) {
+  return new Date(iso).toDateString() === new Date(otherIso).toDateString()
+}

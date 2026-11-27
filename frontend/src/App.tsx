@@ -6,6 +6,8 @@ import { useRoute } from '@/lib/hooks'
 import AlertPage from '@/pages/AlertPage'
 import AlertsPage from '@/pages/AlertsPage'
 import DashboardPage from '@/pages/DashboardPage'
+import IncidentPage from '@/pages/IncidentPage'
+import IncidentsPage from '@/pages/IncidentsPage'
 import LogsPage from '@/pages/LogsPage'
 import RulePage from '@/pages/RulePage'
 import RulesPage from '@/pages/RulesPage'
@@ -13,6 +15,7 @@ import RulesPage from '@/pages/RulesPage'
 // The top bar's links. `section` is the first word of the address after "#/".
 const NAV = [
   { section: '', label: 'Dashboard' },
+  { section: 'incidents', label: 'Incidents' },
   { section: 'alerts', label: 'Alerts' },
   { section: 'logs', label: 'Logs' },
   { section: 'rules', label: 'Detections' },
@@ -24,15 +27,17 @@ function pageFor(parts: string[], params: URLSearchParams) {
   if (rest.length > 0) return null
   if (id === undefined) {
     if (section === '') return <DashboardPage />
+    if (section === 'incidents') return <IncidentsPage params={params} />
     if (section === 'alerts') return <AlertsPage params={params} />
     if (section === 'logs') return <LogsPage />
     if (section === 'rules') return <RulesPage />
   }
-  // `key` gives each alert and each rule a fresh page, so one never briefly
-  // shows another's details. An alert's id must be a whole number, and a
-  // rule's name plain letters, digits and underscores: anything else is not
-  // sent to the server at all.
+  // `key` gives each alert, incident and rule a fresh page, so one never
+  // briefly shows another's details. An alert's or incident's id must be a
+  // whole number, and a rule's name plain letters, digits and underscores:
+  // anything else is not sent to the server at all.
   else if (section === 'alerts' && /^[1-9]\d{0,14}$/.test(id)) return <AlertPage key={id} id={Number(id)} />
+  else if (section === 'incidents' && /^[1-9]\d{0,14}$/.test(id)) return <IncidentPage key={id} id={Number(id)} />
   else if (section === 'rules' && /^\w{1,100}$/.test(id)) return <RulePage key={id} name={id} />
   return null
 }
@@ -67,10 +72,14 @@ export default function App() {
       </a>
       <header className="border-b bg-card">
         <div className="mx-auto flex h-14 max-w-7xl items-center gap-1 px-3 sm:gap-8 sm:px-6">
+          {/* Five links do not fit across a phone. There the logo, which
+              leads to the dashboard anyway, stands in for the Dashboard link
+              and carries its underline. */}
           <a
             href="#/"
             aria-label="Sentinel, to the dashboard"
-            className="flex h-11 min-w-11 shrink-0 items-center gap-2.5 rounded-sm font-semibold tracking-tight outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-current={parts.length === 0 ? 'page' : undefined}
+            className="flex h-full min-w-11 shrink-0 items-center gap-2.5 rounded-sm border-b-2 border-transparent pt-0.5 font-semibold tracking-tight outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:justify-center max-sm:aria-[current=page]:border-primary"
           >
             <img src="/favicon.svg" alt="" className="size-6" />
             <span className="max-sm:sr-only">Sentinel</span>
@@ -81,7 +90,7 @@ export default function App() {
                 key={item.section}
                 href={`#/${item.section}`}
                 aria-current={item.section === (parts[0] ?? '') ? 'page' : undefined}
-                className="flex items-center rounded-sm border-b-2 border-transparent px-2 pt-0.5 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset aria-[current=page]:border-primary aria-[current=page]:font-medium aria-[current=page]:text-foreground"
+                className={`flex ${item.section === '' ? 'max-sm:hidden' : ''} items-center rounded-sm border-b-2 border-transparent px-2 pt-0.5 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset aria-[current=page]:border-primary aria-[current=page]:font-medium aria-[current=page]:text-foreground`}
               >
                 {item.label}
               </a>

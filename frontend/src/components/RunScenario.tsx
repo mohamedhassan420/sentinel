@@ -64,6 +64,14 @@ export function RunScenario({ onDone }: { onDone: () => void }) {
             <a href="#/alerts" className="text-link">
               {plural(result.alerts, 'alert')}
             </a>
+            {result.alerts > 0 && (
+              <>
+                , grouped into{' '}
+                <a href="#/incidents" className="text-link">
+                  {plural(result.incidents, 'incident')}
+                </a>
+              </>
+            )}
             .
           </>
         ) : (

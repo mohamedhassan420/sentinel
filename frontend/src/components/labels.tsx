@@ -33,6 +33,17 @@ export function StatusLabel({ status }: { status: Status }) {
   )
 }
 
+// An incident is Open while any of its alerts still needs a decision.
+export function IncidentStatusLabel({ status }: { status: 'Open' | 'Closed' }) {
+  const Icon = status === 'Open' ? Circle : CircleCheck
+  return (
+    <span className={`inline-flex items-start gap-1.5 ${status === 'Closed' ? 'text-muted-foreground' : ''}`}>
+      <Icon aria-hidden className={`mt-[0.15em] size-[1.15em] shrink-0 ${status === 'Open' ? 'text-primary' : ''}`} />
+      {status}
+    </span>
+  )
+}
+
 // An ATT&CK technique ID that opens MITRE's page about it in a new tab.
 // `roomy` gives it a taller tap area on phones without moving anything: the
 // extra padding is cancelled by an equal negative margin.
