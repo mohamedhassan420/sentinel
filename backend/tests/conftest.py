@@ -16,10 +16,23 @@ def demo_mode(monkeypatch):
 
 
 @pytest.fixture
-def client(tmp_path):
+def engine(tmp_path):
+    """An empty database in a temporary file."""
     engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}", connect_args={"check_same_thread": False})
     SQLModel.metadata.create_all(engine)
+    yield engine
+    engine.dispose()
 
+
+@pytest.fixture
+def session(engine):
+    """A direct line to the test database, for tests that work below the API."""
+    with Session(engine) as session:
+        yield session
+
+
+@pytest.fixture
+def client(engine):
     def test_session():
         with Session(engine) as session:
             yield session
@@ -27,4 +40,3 @@ def client(tmp_path):
     app.dependency_overrides[get_session] = test_session
     yield TestClient(app)
     app.dependency_overrides.clear()
-    engine.dispose()

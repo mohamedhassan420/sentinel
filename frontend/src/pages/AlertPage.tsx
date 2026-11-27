@@ -145,6 +145,20 @@ function Details({ detail }: { detail: AlertDetail }) {
               <dd>{rule?.log_source ?? logs[0]?.source}</dd>
               <dt className="text-muted-foreground">Evidence</dt>
               <dd>{plural(alert.log_ids.length, 'log line')}</dd>
+              {alert.incident_id !== null && (
+                <>
+                  <dt className="text-muted-foreground">Incident</dt>
+                  <dd>
+                    <a
+                      href={`#/incidents/${alert.incident_id}`}
+                      title="See this alert beside the related ones, in order"
+                      className="text-link max-sm:-my-3 max-sm:inline-block max-sm:py-3"
+                    >
+                      Incident #{alert.incident_id}
+                    </a>
+                  </dd>
+                </>
+              )}
               <dt className="text-muted-foreground">Tactic</dt>
               <dd>{alert.attack_tactics.join(', ')}</dd>
               <dt className="text-muted-foreground">Technique</dt>

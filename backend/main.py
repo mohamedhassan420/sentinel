@@ -1,19 +1,20 @@
 """Sentinel's web API. Run with: uvicorn backend.main:app"""
 
 import threading
-from collections import Counter
+from collections import Counter, defaultdict
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path as FilePath
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, HTTPException, Path, Query
+from fastapi import Depends, FastAPI, HTTPException, Path, Query, Response
 from fastapi.staticfiles import StaticFiles
 from sqlmodel import Session, col, func, select
 
 from backend import simulator
 from backend.ai import triage
 from backend.db import create_tables, get_session
-from backend.engine import detection
+from backend.engine import correlation, detection
 from backend.explain import load_explanations
 from backend.models import (
     FALSE_POSITIVE,
@@ -23,6 +24,10 @@ from backend.models import (
     AlertDetail,
     AlertPage,
     Dashboard,
+    IncidentDetail,
+    IncidentPage,
+    IncidentStatus,
+    IncidentSummary,
     Log,
     LogPage,
     ReviewChange,
@@ -31,12 +36,16 @@ from backend.models import (
     Severity,
     Status,
     StatusChange,
+    SummaryResult,
+    SummaryReview,
     TacticCount,
     Technique,
     TechniqueCount,
+    TimelineStep,
     Triage,
     TriageResult,
 )
+from backend.reports import indicators, report
 from backend.simulator import noise
 
 # The detection rules, read once when the server starts. A mistake in a rule
@@ -47,9 +56,12 @@ RULES_BY_NAME = {rule.name: rule for rule in RULES}
 EXPLANATIONS = load_explanations(set(RULES_BY_NAME))
 # The stored AI answers that demo mode serves, one per rule. Checked too.
 DEMO_ANSWERS = triage.load_demo_answers(set(RULES_BY_NAME))
+# And the stored incident summaries, one per scenario.
+DEMO_SUMMARIES = triage.load_demo_summaries(set(RULES_BY_NAME))
 
-# Only one triage is worked out at a time. Without this, two requests for
-# the same alert arriving together would both ask the AI, and pay twice.
+# Only one triage or incident summary is worked out at a time. Without this,
+# two requests for the same alert arriving together would both ask the AI,
+# and pay twice.
 # ponytail: one lock for the whole app, so alerts opened at the same moment
 # queue behind each other. Use one lock per alert if several analysts ever
 # share a Sentinel.
@@ -70,6 +82,7 @@ TextFilter = Annotated[str | None, Query(max_length=100)]
 # An alert's number in the address. The upper limit is the biggest number
 # the database can hold, so a silly value is refused instead of crashing.
 AlertId = Annotated[int, Path(ge=1, le=2**63 - 1)]
+IncidentId = AlertId  # an incident's number follows the same rules
 
 
 @app.get("/api/health")
@@ -80,7 +93,8 @@ def health() -> dict:
 @app.post("/api/simulate/{scenario}")
 def simulate(scenario: str, session: SessionDep) -> dict:
     """Write one attack scenario, mixed with background noise, into the log
-    store, then run the detection rules over the new logs."""
+    store, run the detection rules over the new logs, and group the alerts
+    they raise into incidents."""
     if scenario not in simulator.SCENARIOS:
         raise HTTPException(status_code=404, detail="Unknown scenario")
     logs = simulator.run(scenario)
@@ -91,14 +105,17 @@ def simulate(scenario: str, session: SessionDep) -> dict:
     # window, so a burst split across two batches is still counted.
     alerts = detection.detect(logs, RULES)
     session.add_all(alerts)
+    session.flush()  # gives every alert its id, before the alerts are grouped
+    incidents = correlation.correlate(session, alerts)
     background = sum(log.scenario == noise.SCENARIO for log in logs)
     result = {
         "added": len(logs),
         "attack": len(logs) - background,
         "background": background,
         "alerts": len(alerts),
+        "incidents": len(incidents),  # how many incidents those alerts went into
     }
-    session.commit()  # logs and alerts are saved together, or not at all
+    session.commit()  # logs, alerts and incidents are saved together, or not at all
     return result
 
 
@@ -260,26 +277,171 @@ def dashboard(session: SessionDep) -> Dashboard:
     open_by_severity = dict.fromkeys(detection.SEVERITIES.values(), 0)
     by_status = dict.fromkeys(STATUSES, 0)
     tactics, techniques = Counter(), Counter()
+    open_incidents = set()  # an incident is open while any of its alerts is
     # ponytail: this reads every alert and counts in Python, because the
     # tactics and techniques are stored as lists inside each row. Fine for a
     # few thousand alerts. Beyond that, give them their own table and let
     # the database count.
-    rows = session.exec(select(Alert.severity, Alert.status, Alert.attack_tactics, Alert.attack_techniques)).all()
-    for severity, status, alert_tactics, alert_techniques in rows:
+    rows = session.exec(
+        select(Alert.severity, Alert.status, Alert.attack_tactics, Alert.attack_techniques, Alert.incident_id)
+    ).all()
+    for severity, status, alert_tactics, alert_techniques, incident_id in rows:
         by_status[status] += 1
         if status in OPEN_STATUSES:
             open_by_severity[severity] += 1
+            open_incidents.add(incident_id)
         if status != FALSE_POSITIVE:
             tactics.update(alert_tactics)
             techniques.update(alert_techniques)
     return Dashboard(
         open_by_severity=open_by_severity,
         by_status=by_status,
+        open_incidents=len(open_incidents),
         tactics=[TacticCount(tactic=tactic, alerts=tactics[tactic]) for tactic in detection.TACTICS.values()],
         techniques=[
             TechniqueCount(id=technique, name=detection.TECHNIQUES.get(technique, ""), alerts=count)
             for technique, count in sorted(techniques.items())
         ],
+    )
+
+
+# ------------------------------------------------------------------ Incidents
+
+
+@app.get("/api/incidents")
+def list_incidents(
+    session: SessionDep,
+    status: IncidentStatus | None = None,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 200,
+) -> IncidentPage:
+    """The incidents, the one with the newest alert first. `status` can be
+    Open or Closed."""
+    # ponytail: this reads every alert and groups them in Python, because an
+    # incident's facts are worked out from its alerts and not stored. Fine
+    # for a few thousand alerts. Beyond that, store each incident's times
+    # and status on its own row and keep them up to date.
+    grouped = defaultdict(list)
+    for alert in session.exec(select(Alert).where(col(Alert.incident_id).is_not(None))).all():
+        grouped[alert.incident_id].append(alert)
+    incidents = [correlation.incident_info(number, alerts) for number, alerts in grouped.items()]
+    if status:
+        incidents = [incident for incident in incidents if incident.status == status]
+    incidents.sort(key=lambda incident: (incident.end_time, incident.id), reverse=True)
+    return IncidentPage(total=len(incidents), incidents=incidents[:limit])
+
+
+def _incident_alerts(session: Session, incident_id: int) -> list[Alert]:
+    """The incident's alerts, oldest first. An incident always has at least
+    one, so none at all means there is no such incident."""
+    alerts = session.exec(
+        select(Alert).where(Alert.incident_id == incident_id).order_by(col(Alert.time), col(Alert.id))
+    ).all()
+    if not alerts:
+        raise HTTPException(status_code=404, detail="No incident has that id")
+    return alerts
+
+
+def _evidence(session: Session, alerts: list[Alert]) -> dict[int, Log]:
+    """Every log line the alerts point to, by log id."""
+    log_ids = {log_id for alert in alerts for log_id in alert.log_ids}
+    return {log.id: log for log in session.exec(select(Log).where(col(Log.id).in_(log_ids))).all()}
+
+
+def _incident_detail(session: Session, incident_id: int) -> IncidentDetail:
+    alerts = _incident_alerts(session, incident_id)
+    logs = _evidence(session, alerts)
+    real = correlation.real_alerts(alerts)  # leaves out false positives
+    techniques = Counter(technique for alert in real for technique in alert.attack_techniques)
+    return IncidentDetail(
+        incident=correlation.incident_info(incident_id, alerts),
+        # Each alert with the log line that set it off: its last one.
+        timeline=[
+            TimelineStep(alert=alert, evidence=logs.get(alert.log_ids[-1]) if alert.log_ids else None)
+            for alert in alerts
+        ],
+        techniques=[
+            TechniqueCount(id=technique, name=detection.TECHNIQUES.get(technique, ""), alerts=count)
+            for technique, count in sorted(techniques.items())
+        ],
+        indicators=indicators.find(real, logs),
+    )
+
+
+@app.get("/api/incidents/{incident_id}")
+def get_incident(incident_id: IncidentId, session: SessionDep) -> IncidentDetail:
+    """One incident: its alerts in time order, and what they add up to."""
+    return _incident_detail(session, incident_id)
+
+
+def _get_summary(session: Session, incident_id: int) -> IncidentSummary | None:
+    return session.exec(select(IncidentSummary).where(IncidentSummary.incident_id == incident_id)).first()
+
+
+@app.post("/api/incidents/{incident_id}/summary")
+def summarise_incident(incident_id: IncidentId, session: SessionDep) -> SummaryResult:
+    """The AI's summary of one incident. Like an alert's triage, the first
+    request works it out and stores it, and later requests return the stored
+    one. It is thrown away when new alerts join the incident."""
+    alerts = _incident_alerts(session, incident_id)
+    with TRIAGE_LOCK:
+        stored = _get_summary(session, incident_id)
+        if stored is None:
+            try:
+                stored = triage.summarise(
+                    correlation.incident_info(incident_id, alerts), alerts, RULES_BY_NAME,
+                    _evidence(session, alerts), DEMO_SUMMARIES,
+                )
+            except triage.Unavailable as problem:
+                return SummaryResult(summary=None, problem=str(problem))
+            # In live mode the AI takes several seconds. If a scenario run
+            # added alerts to this incident meanwhile, the answer describes
+            # an incident that has moved on, so it is not stored.
+            now = session.exec(select(func.count()).select_from(Alert).where(Alert.incident_id == incident_id)).one()
+            if now != len(alerts):
+                return SummaryResult(
+                    summary=None, problem="New alerts joined this incident while the AI was reading it."
+                )
+            session.add(stored)
+            session.commit()
+            session.refresh(stored)
+    return SummaryResult(summary=stored)
+
+
+@app.patch("/api/incidents/{incident_id}/summary")
+def review_summary(incident_id: IncidentId, change: SummaryReview, session: SessionDep) -> IncidentSummary:
+    """Record the analyst's decision about the summary. As with a triage,
+    the AI's own words are kept and the analyst's go beside them."""
+    stored = _get_summary(session, incident_id)
+    if stored is None:
+        raise HTTPException(status_code=404, detail="This incident has no summary to review yet")
+    agrees = (change.severity, change.summary, change.containment, change.recovery) == (
+        stored.severity, stored.summary, stored.containment, stored.recovery
+    )
+    stored.review = "Accepted" if agrees else "Edited"
+    stored.final_severity = change.severity
+    stored.final_summary = change.summary
+    stored.final_containment = change.containment
+    stored.final_recovery = change.recovery
+    session.add(stored)
+    session.commit()
+    session.refresh(stored)
+    return stored
+
+
+@app.get("/api/incidents/{incident_id}/report.pdf")
+def incident_report(incident_id: IncidentId, session: SessionDep) -> Response:
+    """The incident as a PDF report. It uses the stored summary if there is
+    one (the analyst's version once reviewed), and plain facts if not."""
+    detail = _incident_detail(session, incident_id)
+    html = report.render_html(detail, _get_summary(session, incident_id), datetime.now(timezone.utc))
+    try:
+        pdf = report.to_pdf(html)
+    except report.Unavailable as problem:
+        raise HTTPException(status_code=503, detail=str(problem))
+    return Response(
+        pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="sentinel-incident-{incident_id}.pdf"'},
     )
 
 

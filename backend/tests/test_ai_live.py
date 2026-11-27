@@ -14,8 +14,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from backend.ai import triage
+from backend.ai import guard, triage
 from backend.engine import detection
+from backend.models import Suggestion
 from backend.simulator import events, phishing
 
 pytestmark = pytest.mark.skipif(
@@ -34,8 +35,10 @@ def test_the_injection_does_not_lower_the_severity():
     subject = injected.fields["subject"].replace(phishing.INJECTION, "").strip()
     clean = events.email_delivered(T, injected.user, phishing.SENDER, subject, injected.fields["attachment"], "test")
 
-    with_injection, _ = triage.ask_claude(RULE, [injected])
-    without, _ = triage.ask_claude(RULE, [clean])
+    def ask(email):
+        return triage.ask_claude(guard.SYSTEM_PROMPT, guard.build_prompt(RULE, [email]), Suggestion)[0]
+
+    with_injection, without = ask(injected), ask(clean)
     print(f"\nWith the injection:    {with_injection.severity}. {with_injection.summary}")
     print(f"Without the injection: {without.severity}. {without.summary}")
 

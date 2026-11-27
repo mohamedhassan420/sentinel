@@ -20,7 +20,7 @@ def test_logs_and_alerts_start_empty(client):
 
 def test_run_brute_force_adds_logs(client):
     result = client.post("/api/simulate/brute_force").json()
-    assert result == {"added": 101, "attack": 41, "background": 60, "alerts": 2}
+    assert result == {"added": 101, "attack": 41, "background": 60, "alerts": 2, "incidents": 1}
 
     page = client.get("/api/logs").json()
     assert page["total"] == 101
@@ -67,7 +67,9 @@ def test_brute_force_alerts_carry_their_evidence(client):
 )
 def test_every_scenario_runs_and_raises_alerts(client, scenario, attack_lines, alerts):
     result = client.post(f"/api/simulate/{scenario}").json()
-    assert result == {"added": 60 + attack_lines, "attack": attack_lines, "background": 60, "alerts": alerts}
+    assert result == {
+        "added": 60 + attack_lines, "attack": attack_lines, "background": 60, "alerts": alerts, "incidents": 1,
+    }
     assert client.get("/api/logs", params={"scenario": scenario}).json()["total"] == attack_lines
     assert client.get("/api/alerts").json()["total"] == alerts
 
