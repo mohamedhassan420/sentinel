@@ -7,9 +7,10 @@ from datetime import datetime, timezone
 from pathlib import Path as FilePath
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, HTTPException, Path, Query, Response
+from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Response
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from sqlmodel import Session, col, func, select
+from sqlmodel import Session, col, delete, func, select
 
 from backend import simulator
 from backend.ai import triage
@@ -24,6 +25,7 @@ from backend.models import (
     AlertDetail,
     AlertPage,
     Dashboard,
+    Incident,
     IncidentDetail,
     IncidentPage,
     IncidentStatus,
@@ -67,6 +69,18 @@ DEMO_SUMMARIES = triage.load_demo_summaries(set(RULES_BY_NAME))
 # share a Sentinel.
 TRIAGE_LOCK = threading.Lock()
 
+# Laying out a PDF is the heaviest work Sentinel does, so only one report is
+# made at a time. Without this, a burst of "Download report" requests would
+# each claim memory at once and could bring a small server down. A request
+# that has waited this many seconds is told to try again.
+REPORT_LOCK = threading.Lock()
+REPORT_WAIT_SECONDS = 15
+
+# The most log lines the store may hold. Anyone who can open the site can run
+# scenarios, so without a limit the database would grow until the disk was
+# full. See _make_room().
+MAX_LOGS = 20_000
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -75,6 +89,57 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Sentinel", lifespan=lifespan)
+
+
+# -------------------------------------------------------- Browser safeguards
+
+# Sent with every answer. Each one switches on a protection that browsers
+# have built in but leave off until a site asks for it.
+SECURITY_HEADERS = {
+    # Never guess a file's type from its contents: a file is what we say it is.
+    "X-Content-Type-Options": "nosniff",
+    # No other site may show Sentinel inside a frame, where it could trick a
+    # visitor into pressing Sentinel's buttons (called clickjacking).
+    "X-Frame-Options": "DENY",
+    # Do not tell other sites which Sentinel page a visitor came from.
+    "Referrer-Policy": "no-referrer",
+    # Once a browser has reached Sentinel over HTTPS, it keeps using HTTPS.
+    # Browsers ignore this line on plain HTTP, so it does nothing on localhost.
+    "Strict-Transport-Security": "max-age=31536000",
+}
+# The Content Security Policy: the page may load scripts, styles, fonts and
+# images from Sentinel itself and from nowhere else, and may not run script
+# written into the page. Log text is already shown as plain text, so this is
+# a second lock on the same door: if attacker-written text ever did reach the
+# page as HTML, the browser would still refuse to run it.
+CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+)
+# FastAPI's own documentation pages load their script from a public library
+# host, so the policy above would leave them blank. They show no log text.
+PAGES_WITHOUT_POLICY = ("/docs", "/redoc")
+
+
+@app.middleware("http")
+async def browser_safeguards(request: Request, call_next):
+    """Runs around every request: refuses writes that another website set
+    off, and adds the security headers to every answer."""
+    # A browser says where each request came from in the Sec-Fetch-Site
+    # header. "same-origin" is Sentinel's own page. Anything else on a
+    # request that changes data means some other website made the visitor's
+    # browser send it (cross-site request forgery). On a private Sentinel in
+    # live mode, that could spend the owner's AI credit behind their back.
+    # Programs that are not browsers (curl, the tests) do not send the header.
+    # ponytail: browsers from before 2023 do not send it either, and get no
+    # protection here. Compare the Origin header with Host to cover them.
+    came_from = request.headers.get("sec-fetch-site", "same-origin")
+    if request.method not in ("GET", "HEAD", "OPTIONS") and came_from not in ("same-origin", "none"):
+        return JSONResponse({"detail": "Requests from other websites are not accepted."}, status_code=403)
+    response = await call_next(request)
+    response.headers.update(SECURITY_HEADERS)
+    if not request.url.path.startswith(PAGES_WITHOUT_POLICY):
+        response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
+    return response
 
 SessionDep = Annotated[Session, Depends(get_session)]
 # Short text filters. The length limits stop anyone sending huge inputs.
@@ -97,6 +162,7 @@ def simulate(scenario: str, session: SessionDep) -> dict:
     they raise into incidents."""
     if scenario not in simulator.SCENARIOS:
         raise HTTPException(status_code=404, detail="Unknown scenario")
+    _make_room(session)
     logs = simulator.run(scenario)
     session.add_all(logs)
     session.flush()  # gives every log its id, which the alerts point back to
@@ -117,6 +183,19 @@ def simulate(scenario: str, session: SessionDep) -> dict:
     }
     session.commit()  # logs, alerts and incidents are saved together, or not at all
     return result
+
+
+def _make_room(session: Session) -> None:
+    """Empty the store once it holds MAX_LOGS log lines, before a new
+    scenario is written. Nothing is saved until the caller commits."""
+    # ponytail: everything goes at once, because every row is simulated and
+    # one click makes more. A store worth keeping would delete only its
+    # oldest logs, and the alerts that point to them.
+    if session.exec(select(func.count()).select_from(Log)).one() < MAX_LOGS:
+        return
+    # Rows that point to other rows go first.
+    for table in (Triage, IncidentSummary, Alert, Incident, Log):
+        session.exec(delete(table))
 
 
 @app.get("/api/logs")
@@ -434,10 +513,14 @@ def incident_report(incident_id: IncidentId, session: SessionDep) -> Response:
     one (the analyst's version once reviewed), and plain facts if not."""
     detail = _incident_detail(session, incident_id)
     html = report.render_html(detail, _get_summary(session, incident_id), datetime.now(timezone.utc))
+    if not REPORT_LOCK.acquire(timeout=REPORT_WAIT_SECONDS):
+        raise HTTPException(status_code=503, detail="Sentinel is busy making other reports. Try again in a moment.")
     try:
         pdf = report.to_pdf(html)
     except report.Unavailable as problem:
         raise HTTPException(status_code=503, detail=str(problem))
+    finally:
+        REPORT_LOCK.release()
     return Response(
         pdf,
         media_type="application/pdf",

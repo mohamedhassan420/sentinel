@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from sqlmodel import Session, create_engine, func, select
 
+from backend import main
 from backend.db import create_tables
 from backend.explain import load_explanations
 from backend.models import Log
@@ -275,3 +276,58 @@ def test_explanations_must_match_the_rules(tmp_path):
     (tmp_path / "rule_one.yml").write_text(good.replace("why:", "wy:"), encoding="utf-8")
     with pytest.raises(ValueError, match="rule_one.yml is not valid"):  # a misspelt heading
         load_explanations({"rule_one"}, tmp_path)
+
+
+# ------------------------------------------------- Sentinel's own safeguards
+
+
+def test_every_answer_carries_the_security_headers(client):
+    headers = client.get("/api/health").headers
+    assert headers["X-Content-Type-Options"] == "nosniff"
+    assert headers["X-Frame-Options"] == "DENY"
+    assert headers["Referrer-Policy"] == "no-referrer"
+    assert "default-src 'self'" in headers["Content-Security-Policy"]
+    # An error answer is protected too.
+    assert client.get("/api/alerts/999").headers["X-Content-Type-Options"] == "nosniff"
+    # FastAPI's documentation page loads its script from another host, so it
+    # is the one place the content policy is left off.
+    docs = client.get("/docs")
+    assert docs.status_code == 200
+    assert "Content-Security-Policy" not in docs.headers
+    assert docs.headers["X-Frame-Options"] == "DENY"
+
+
+def test_a_write_set_off_by_another_website_is_refused(client):
+    for origin in ("cross-site", "same-site"):
+        response = client.post("/api/simulate/brute_force", headers={"Sec-Fetch-Site": origin})
+        assert response.status_code == 403
+    assert client.get("/api/logs").json()["total"] == 0  # nothing was written
+
+    # Sentinel's own page may write, and so may a program that is not a browser.
+    assert client.post("/api/simulate/brute_force", headers={"Sec-Fetch-Site": "same-origin"}).status_code == 200
+    assert client.post("/api/simulate/brute_force").status_code == 200
+    # Changing a status and asking for a triage are writes as well.
+    other_site = {"Sec-Fetch-Site": "cross-site"}
+    assert client.patch("/api/alerts/1", json={"status": "In progress"}, headers=other_site).status_code == 403
+    assert client.post("/api/alerts/1/triage", headers=other_site).status_code == 403
+    # Reading is open to anyone: the browser itself keeps another website
+    # from seeing the answer.
+    assert client.get("/api/logs", headers=other_site).status_code == 200
+
+
+def test_a_full_store_is_emptied_before_the_next_run(client, monkeypatch):
+    monkeypatch.setattr(main, "MAX_LOGS", 150)  # one brute force run writes 101 lines
+    client.post("/api/simulate/brute_force")
+    client.post("/api/alerts/1/triage")
+    client.post("/api/incidents/1/summary")
+    client.post("/api/simulate/brute_force")  # 101 is under the limit, so nothing is lost
+    assert client.get("/api/logs").json()["total"] == 202
+    assert client.get("/api/alerts").json()["total"] == 4
+
+    client.post("/api/simulate/brute_force")  # 202 is over it: the store starts again
+    assert client.get("/api/logs").json()["total"] == 101
+    assert client.get("/api/alerts").json()["total"] == 2
+    assert client.get("/api/incidents").json()["total"] == 1
+    # The old alerts' AI suggestions went with them: the new alerts start unreviewed.
+    for alert in client.get("/api/alerts").json()["alerts"]:
+        assert client.post(f"/api/alerts/{alert['id']}/triage").json()["triage"]["review"] == "Not reviewed"
