@@ -23,7 +23,11 @@ sentinel/
     KICKOFF.md       # the first-session setup message (kept for reference)
     LEARNING.md      # one plain-English entry per phase
     DECISIONS.md     # short log of decisions Mohamed makes
+    THREAT_MODEL.md  # what could go wrong with Sentinel itself, and what stops it
+    INTERVIEW_PREP.md  DEMO_SCRIPT.md  LINKEDIN_POST.md   # the CV deliverables
+    screenshots/     # the README's images
   backend/  frontend/  ...   # created in Phase 1, as shown in PLAN.md
+  render.yaml        # the public deployment on Render
 ```
 
 Keep the project root tidy: no stray scripts, temp files or duplicate docs. When Mohamed makes a decision (a name, a colour scheme, a host), add one dated line to `docs/DECISIONS.md`.

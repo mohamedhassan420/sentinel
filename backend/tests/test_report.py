@@ -276,3 +276,15 @@ def test_defanging_makes_addresses_unclickable():
     # File and account names are not addresses, so they are left as they are.
     assert defanged("File name", "Invoice_INV-20481.docm") == "Invoice_INV-20481.docm"
     assert defanged("Account created", "svc_update") == "svc_update"
+
+
+def test_only_one_report_is_made_at_a_time(client, monkeypatch):
+    client.post("/api/simulate/full_chain")
+    monkeypatch.setattr(report, "to_pdf", lambda html: b"%PDF-1.7 a test page")
+    monkeypatch.setattr(main, "REPORT_WAIT_SECONDS", 0.05)
+    with main.REPORT_LOCK:  # another report is being made
+        response = client.get("/api/incidents/1/report.pdf")
+    assert response.status_code == 503
+    assert "busy" in response.json()["detail"]
+    # Once that one is finished, the next request gets its report.
+    assert client.get("/api/incidents/1/report.pdf").status_code == 200

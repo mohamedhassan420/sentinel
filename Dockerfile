@@ -31,4 +31,8 @@ USER sentinel
 
 ENV SENTINEL_DB=/data/sentinel.db
 EXPOSE 8000
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# A hosting service says which port to listen on in the PORT variable. On
+# your own computer nothing sets it, and the app uses 8000. "exec" hands the
+# container over to uvicorn, so that stopping the container stops it cleanly.
+# --no-server-header stops every answer announcing which web server this is.
+CMD ["sh", "-c", "exec uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000} --no-server-header"]

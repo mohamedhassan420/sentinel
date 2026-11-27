@@ -270,3 +270,50 @@ The executive summary supports *analysis* and tells managers what happened and h
 
 **What would you contain first in the full attack chain?**
 The workstation, WKS-FIN-03: disconnect it from the network. That one action cuts the attacker's connection, stops any more data leaving and stops them moving to other machines. Next, block the attacker's address 198.51.100.23 at the firewall and disable the svc_update administrator account they created. Then reset a.khan's password, because every step ran under that account, and remove the phishing email from all mailboxes so nobody else opens it. The machine is isolated, not switched off: turning it off would destroy evidence held in its memory.
+
+## Phase 6: Polish and ship
+
+### What was built
+
+- **An About page** and a footer on every page. The About page shows the five steps from attack to report using real pieces of the app, says what is simulated and what is real, and says who built it and how.
+- **A UI review** of every screen at phone, tablet and desktop width. It found little: a clearer yellow for Medium so it is not taken for High's orange, a page title for each screen, and a link from the empty dashboard to the About page.
+- **A threat model** (`docs/THREAT_MODEL.md`) and a manual security review of Sentinel's own code, with five fixes.
+- **Deployment files.** `render.yaml` describes the public site on Render, a hosting service with a free tier. The Docker image now listens on whichever port the host names.
+- **The CV deliverables**: a new README with screenshots and a GIF, a demo video script, an interview prep page and a LinkedIn post draft, all in `docs/`.
+- **Tests.** 223 now. The four new ones cover the security fixes.
+
+### Why it works this way
+
+- **The public site runs in demo mode with no API key.** Strangers can press every button and it costs nothing, and there is no secret on the server to steal. That one decision removes the two worst outcomes.
+- **Anything open to the internet needs limits.** Anyone can run scenarios on the public site, so the log store empties itself at 20,000 lines, and only one PDF is built at a time. Without limits, one bored visitor could fill the disk. Making a service unusable like that is called a *denial of service*.
+- **Writes from other websites are refused.** While Sentinel runs on your own computer, any website open in another tab can make your browser send it requests. This is *cross-site request forgery* (CSRF). In live mode that could spend your AI credit. Browsers say where each request came from in a header called `Sec-Fetch-Site`, and Sentinel refuses a change that did not come from its own page.
+- **Security headers are a second lock.** A *Content Security Policy* tells the browser to run only Sentinel's own script files. Sentinel already shows log text as plain text, so no attacker's script should ever reach the page. If one did, through some future mistake, the browser would still refuse to run it. Relying on two independent protections is *defence in depth*.
+- **Some risks are accepted, in writing.** The public demo has no login, and visitors share one store. A threat model does not have to fix everything. It has to show that each risk was seen and that the decision to leave it was made on purpose.
+- **The deployment is a file.** `render.yaml` says what to build and how to run it, so the site can be rebuilt from the repo alone, and it redeploys only after the tests pass.
+
+### What Mohamed learns
+
+**The architecture in one minute**
+
+"The simulator writes logs. The rule engine turns matches into alerts. Correlation groups related alerts into incidents. The AI adds explanations beside them. The report sums up the incident. It is one Python backend, one React front end and one Docker container."
+
+**The three design trade-offs**
+
+- **Simulated data.** Safe and repeatable, and anyone can run it. The cost: real logs are messier, so every rule would need tuning again on real data.
+- **AI as an assistant.** Fast, consistent write-ups. The cost: a person must still read and decide, so the AI saves time without removing a step.
+- **Demo mode.** A public site that is free and has no key to steal. The cost: its AI answers are stored examples, written by hand, and it says so.
+
+**What a threat model is**
+
+Four questions. What are we building? What can go wrong? What are we doing about it? What are we choosing to live with? Sentinel's lists what it protects (the API key, the analyst's trust, the visitor's browser, the demo staying up), who might attack (a stranger, the attacker inside the logs, another website, a bad dependency), thirteen threats with their defences, and the accepted risks.
+
+### Check questions
+
+**Why did you simulate logs instead of using a real lab?**
+It is safe, because nothing is attacked. It is repeatable: the same click gives the same attack, which is what lets every rule be tested both ways. And it kept the time on the analyst's work, detection and triage, and not on maintaining virtual machines. The trade-off is honesty about the limit: simulated logs are cleaner than real ones, so in a real SOC I would expect to tune every rule again.
+
+**What would you add next?**
+Detection over a sliding time window, because today a burst of failed logons split across two batches would be missed. Then an audit trail of who changed each status and why, and accounts with roles, which a real team needs before anything else. After that, converting the rules with `sigma-cli` to prove they run in Splunk or Elastic.
+
+**What was the hardest part?**
+Getting the rules to stay quiet. Making a rule fire on the attack is the easy half. The work was the near-misses, such as IT running an encoded PowerShell script or a colleague emailing a macro spreadsheet, which must not raise an alert. Tightening a rule to silence those risks missing the real attack, and that is the trade-off every detection engineer manages. (If another part was harder for you, give that answer instead.)
