@@ -81,6 +81,30 @@ export type RuleDetail = Rule & {
 
 export type AlertDetail = { alert: Alert; logs: Log[]; rule: Rule | null }
 
+// The AI's suggestion for one alert, and what the analyst decided about it.
+export type Triage = {
+  alert_id: number
+  // What the AI said. These five never change.
+  summary: string
+  severity: Severity
+  severity_reason: string
+  next_steps: string[] // most urgent first
+  confidence: 'Low' | 'Medium' | 'High'
+  source: 'live' | 'demo' // Claude answered just now, or a stored demo answer
+  model: string | null // which Claude model answered (live only)
+  // The analyst's decision. The three `final_` fields are empty until reviewed.
+  review: 'Not reviewed' | 'Accepted' | 'Edited'
+  final_severity: Severity | null
+  final_summary: string | null
+  final_next_steps: string[] | null
+}
+
+// When the AI cannot answer, `triage` is null and `problem` says why.
+export type TriageResult = { triage: Triage | null; problem: string }
+
+// The analyst's final word. Sending back what the AI said accepts it.
+export type Review = { severity: Severity; summary: string; next_steps: string[] }
+
 export type Dashboard = {
   open_by_severity: Record<Severity, number>
   by_status: Record<Status, number>
@@ -129,12 +153,27 @@ export function getAlert(id: number, signal: AbortSignal) {
   return request<AlertDetail>(`/api/alerts/${id}`, { signal })
 }
 
-export function setAlertStatus(id: number, status: Status) {
-  return request<Alert>(`/api/alerts/${id}`, {
+// Send a change to something that already exists.
+function patch<T>(path: string, change: object) {
+  return request<T>(path, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status }),
+    body: JSON.stringify(change),
   })
+}
+
+export function setAlertStatus(id: number, status: Status) {
+  return patch<Alert>(`/api/alerts/${id}`, { status })
+}
+
+// The alert's AI triage. The first call works it out (a few seconds in live
+// mode); later calls get the stored one back at once.
+export function getTriage(alertId: number, signal: AbortSignal) {
+  return request<TriageResult>(`/api/alerts/${alertId}/triage`, { method: 'POST', signal })
+}
+
+export function reviewTriage(alertId: number, review: Review) {
+  return patch<Triage>(`/api/alerts/${alertId}/triage`, review)
 }
 
 export function getDashboard(signal: AbortSignal) {
