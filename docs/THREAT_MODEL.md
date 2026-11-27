@@ -2,7 +2,7 @@
 
 A threat model is a written answer to four questions: what are we building, what can go wrong, what are we doing about it, and what are we choosing to live with. This one covers Sentinel itself, not the simulated attacks it detects.
 
-**Status, 27 November 2026.** This is a manual review: Claude read every backend file and the frontend's data paths, and fixed what it found (see "Fixed in Phase 6"). The automated scan by the Claude Security plugin then ran on the backend. It found no High or Critical issues, and 3 Medium and 3 Low ones. They are listed in the review log at the end.
+**Status, 27 November 2026.** This is a manual review: Claude read every backend file and the frontend's data paths, and fixed what it found (see "Fixed in Phase 6"). The automated scan by the Claude Security plugin then ran on the backend. It found no High or Critical issues, and 3 Medium and 3 Low ones. The Medium ones are fixed. All six are listed in the review log at the end.
 
 ## What is being protected
 
@@ -57,7 +57,7 @@ The three places untrusted text crosses into something that could act on it are 
 The manual review found these, and they are fixed and tested:
 
 - **No limit on stored data.** Anyone could run scenarios until the disk filled, and the dashboard reads every alert, so it slowed down with them. The store now empties itself at 20,000 log lines.
-- **PDFs could be requested without limit.** Each one costs memory and processor time. Now one is built at a time, and a request that waits 15 seconds is told to try again.
+- **PDFs could be requested without limit.** Each one costs memory and processor time. Now one is built at a time, and a request that arrives meanwhile is told to try again. (The first version made it wait up to 15 seconds; the plugin scan showed that waiting was itself a weakness, finding F2.)
 - **Another website could write to a local Sentinel** (threat 6), and in live mode spend credit through it. Cross-site writes are now refused.
 - **No security headers.** Added: a Content Security Policy, no framing, no content-type guessing, no referrer, HTTPS-only once HTTPS has been used. The server no longer announces its name.
 - **Four moderate advisories** in a package used only while building the frontend. Updated; `npm audit` is clean.
@@ -71,7 +71,6 @@ Things left as they are, on purpose, with the reason.
 | **No login.** Anyone can run scenarios, change statuses and edit AI text on the public demo. | It is a sandbox of simulated data, and a login would stop a recruiter trying it. A real deployment needs accounts and roles first. |
 | **Visitors share one store.** Text one visitor types into an edited summary is shown to the next. | The text is escaped and length-limited, so it cannot run or grow. It lasts only until the free host sleeps (15 quiet minutes) or the store fills. |
 | **No rate limit per visitor.** | The host's own network protection is the only brake. The limits in threat 7 bound what a flood can do, and the worst outcome is a restart with an empty store. |
-| **No limit on the size of a request body.** | Same reasoning: the worst outcome is a restart. A real deployment would set it at the proxy. |
 | **Browsers from before 2023 get no CSRF protection**, and neither does an attack that points a hostile domain name at `localhost` (DNS rebinding). | Both need the owner to be running live mode and browsing a hostile site at the same time, and the damage is capped by the prepaid balance. The fix is a check of the `Origin` and `Host` headers. |
 | **The API's documentation page (`/docs`) is public** and loads its script from a public library host. | It documents an API that is public anyway, and it is useful in a demo. It shows no log text. |
 | **Packages that Sentinel's packages depend on are not pinned by hash**, and base images are pinned by name, not by fingerprint. | Standard for a project this size. A real deployment would pin both and scan the image. |
@@ -88,19 +87,19 @@ Single sign-on and roles (analyst, lead, read-only); a record of who changed whi
 | 27 Nov 2026 | `pip-audit` on `backend/requirements.txt` | No known vulnerabilities |
 | 27 Nov 2026 | `npm audit` on the frontend | 4 moderate, fixed by `npm audit fix`; now 0 |
 | 27 Nov 2026 | Search of the git history for API keys | None found |
-| 27 Nov 2026 | Claude Security plugin scan of `backend/` (medium effort, commit `ce94f41`, every finding checked by an independent verifier panel) | 6 findings: 0 Critical, 0 High, 3 Medium, 3 Low. None fixed yet; listed below |
+| 27 Nov 2026 | Claude Security plugin scan of `backend/` (medium effort, commit `ce94f41`, every finding checked by an independent verifier panel) | 6 findings: 0 Critical, 0 High, 3 Medium, 3 Low. The 3 Medium ones are fixed (below) |
 
-### Open findings from the plugin scan
+### Findings from the plugin scan
 
-None is High or Critical. All are about availability, or about spending API credit in local live mode.
+None is High or Critical. All are about availability, or about spending API credit in local live mode. Each fix has a test that fails without it.
 
-| # | Severity | Finding | Suggested fix |
+| # | Severity | Finding | State |
 | --- | --- | --- | --- |
-| F1 | Medium | No request body size limit. One huge JSON body sent to a `PATCH` route is read whole into memory and can restart the free instance. | `FastAPI(max_body_size=64_000)` |
-| F2 | Medium | PDF requests waiting for the one-at-a-time lock keep a database connection and a worker thread for up to 15 s. About 15 parallel requests then stall the whole API. | Take the lock before touching the database, and refuse at once instead of waiting |
-| F3 | Medium | Repeated `full_chain` runs merge into one incident of thousands of alerts, and each PDF of it is very slow to build. | Cap the rows in the report, or the alerts per incident |
+| F1 | Medium | No request body size limit. One huge JSON body sent to a `PATCH` route is read whole into memory and can restart the free instance. | **Fixed:** bodies over 64 KB get "413 Content Too Large" before they are read |
+| F2 | Medium | PDF requests waiting for the one-at-a-time lock keep a database connection and a worker thread for up to 15 s. About 15 parallel requests then stall the whole API. | **Fixed:** the lock is taken first, and a busy server refuses at once instead of queuing |
+| F3 | Medium | Repeated `full_chain` runs merge into one incident of thousands of alerts, and each PDF of it is very slow to build. | **Fixed:** the timeline and indicator tables stop at 100 rows each, with a note counting the rest |
 | F4 | Low | The cross-site check trusts `Sec-Fetch-Site` only. DNS rebinding, or an old browser, can drive a local live-mode Sentinel. | Allow-list the `Host` header, and require `Origin` on writes |
 | F5 | Low | The incident summary prompt has no cap on the number of alerts, so its cost grows with the incident. | Cap the alerts block at 50, like the evidence lines |
 | F6 | Low | Live AI calls have no overall rate limit, and failures are retried, so each `POST` can bill again. | A per-minute cap on live calls, and a spending cap on the key in the Console |
 
-F4 to F6 need live mode, which the public site never runs. The public site's exposure comes from F1 to F3, which can make it restart with an empty store.
+F4 to F6 are open, by decision. They need live mode on the owner's own computer, which the public site never runs. Their suggested fixes are in the table.

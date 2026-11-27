@@ -44,6 +44,14 @@ GENERAL_RECOVERY = [
 ]
 
 
+# The most rows the timeline and the indicator table may each have. Anyone can
+# run scenarios, and repeated runs all join one incident, so without a limit
+# an incident could reach thousands of alerts and every PDF of it would take
+# minutes to lay out. A real attack chain is about nine alerts; the rest are
+# counted in a note under the table and stay visible in Sentinel itself.
+MAX_ROWS = 100
+
+
 class Unavailable(Exception):
     """The PDF could not be made on this computer. The message is safe to show."""
 
@@ -69,14 +77,16 @@ def render_html(detail: IncidentDetail, summary: IncidentSummary | None, generat
         steps=[
             {"time": _time(alert.time), "tactics": alert.attack_tactics, "title": alert.title,
              "host": alert.host, "user": alert.user, "severity": alert.severity}
-            for alert in real
+            for alert in real[:MAX_ROWS]
         ],
+        more_steps=max(len(real) - MAX_ROWS, 0),
         false_positives=len(alerts) - len(real),
         techniques=detail.techniques,
         indicators=[
             {"kind": indicator.kind, "value": defang(indicator), "seen_in": indicator.alert_title}
-            for indicator in detail.indicators
+            for indicator in detail.indicators[:MAX_ROWS]
         ],
+        more_indicators=max(len(detail.indicators) - MAX_ROWS, 0),
         prose=_defanged(_prose(summary) or _fallback_prose(incident), detail.indicators),
     )
 

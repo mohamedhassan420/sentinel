@@ -331,3 +331,14 @@ def test_a_full_store_is_emptied_before_the_next_run(client, monkeypatch):
     # The old alerts' AI suggestions went with them: the new alerts start unreviewed.
     for alert in client.get("/api/alerts").json()["alerts"]:
         assert client.post(f"/api/alerts/{alert['id']}/triage").json()["triage"]["review"] == "Not reviewed"
+
+
+def test_a_huge_request_body_is_refused_before_it_is_read(client):
+    # Scan finding F1: without a limit, this body would be read whole into
+    # memory and parsed before anything checked it.
+    client.post("/api/simulate/brute_force")
+    huge = '{"status": "In progress", "padding": "' + "x" * 100_000 + '"}'
+    response = client.patch("/api/alerts/1", content=huge, headers={"Content-Type": "application/json"})
+    assert response.status_code == 413
+    # A normal-sized request still works.
+    assert client.patch("/api/alerts/1", json={"status": "In progress"}).status_code == 200

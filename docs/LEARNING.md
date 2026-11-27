@@ -317,3 +317,30 @@ Detection over a sliding time window, because today a burst of failed logons spl
 
 **What was the hardest part?**
 Getting the rules to stay quiet. Making a rule fire on the attack is the easy half. The work was the near-misses, such as IT running an encoded PowerShell script or a colleague emailing a macro spreadsheet, which must not raise an alert. Tightening a rule to silence those risks missing the real attack, and that is the trade-off every detection engineer manages. (If another part was harder for you, give that answer instead.)
+
+## Phase 6, part 2: the automated security scan
+
+### What was built
+
+The Claude Security plugin scanned the backend: a group of AI reviewers read every file, and a separate panel tried to disprove each problem they reported. It found nothing High or Critical, and 3 Medium and 3 Low issues. The three Medium ones were all ways a stranger could make the free public server too slow or crash it (denial of service, DoS), and they are fixed:
+
+- **F1, no size limit on requests.** A huge request was read into memory whole before anything checked it. Now anything over 64 KB is refused with "413 Content Too Large" before it is read.
+- **F2, PDF requests waited in line.** Only one PDF is made at a time, but the others used to wait up to 15 seconds, each holding a database connection and a worker thread. About 15 of them stalled every page. Now a busy server says "try again" at once, before it touches the database.
+- **F3, reports with no length limit.** Repeated scenario runs all join one incident, and every alert became a row in the PDF. Now each table stops at 100 rows, with a note counting the rest.
+
+The three Low ones (F4 to F6) only matter when the owner runs live mode with an API key on their own computer, and they are documented in `docs/THREAT_MODEL.md`.
+
+### Why it works this way
+
+Each fix is the smallest change at the cause: one setting for F1, moving the lock check to the top of one function for F2, and two slices in the report for F3. Each has one test that fails without its fix (this was checked by removing the fix and running the test).
+
+### Check questions
+
+**Your own safeguard made things worse. How?**
+The lock that limits PDFs to one at a time made the others wait, and a waiting request still holds scarce resources. A defence can create a new weakness, which is why a second, independent review is worth running even after your own.
+
+**Why refuse at once instead of queuing?**
+A refused request costs almost nothing, and the visitor can click again. A queue that is not capped lets one attacker fill it and block everyone else.
+
+**Why not fix the Low findings too?**
+They need live mode on the owner's own machine plus a trick like DNS rebinding. The public site never runs live mode. Fixing them is real work for a small risk, so they are recorded with their suggested fixes. That is a risk decision, and writing it down is part of the job.
