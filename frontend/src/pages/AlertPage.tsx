@@ -5,13 +5,15 @@ import { SeverityLabel, TechniqueLink } from '@/components/labels'
 import { LogEvent, LogMessage } from '@/components/LogParts'
 import { Message } from '@/components/Message'
 import { Timestamp } from '@/components/Timestamp'
+import { TriageCard } from '@/components/TriageCard'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { getAlert, setAlertStatus, STATUSES, type Alert, type AlertDetail, type Status } from '@/lib/api'
 import { plural } from '@/lib/display'
 import { useLoad } from '@/lib/hooks'
 
-// One alert: what fired, why, the logs that prove it, and the analyst's decision.
+// One alert: what fired, why, the AI's triage of it, the logs that prove it,
+// and the analyst's decision.
 export default function AlertPage({ id }: { id: number }) {
   const { data, error, reload } = useLoad((signal) => getAlert(id, signal))
 
@@ -75,6 +77,8 @@ function Details({ detail }: { detail: AlertDetail }) {
               </p>
             )}
           </section>
+
+          <TriageCard alert={alert} />
 
           <section aria-labelledby="evidence-heading" className="panel overflow-clip">
             <div className="p-5 pb-3">

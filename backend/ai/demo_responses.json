@@ -1,0 +1,133 @@
+{
+  "about": "Stored answers for demo mode, one per detection rule. They were written by hand in the style of a live answer and were not produced by a live API call. {host} and {user} are replaced with the alert's own host and user.",
+  "answers": {
+    "email_macro_attachment_external_sender": {
+      "summary": "The mail gateway delivered an email to {user} from accounts@c0rp.example. That domain is a lookalike of the company's real one, corp.example, with a zero in place of the letter o. The email carries a Word file that can run macros (.docm), presented as an overdue invoice that must be paid today. The subject line also contains text addressed to AI security tools, telling them to trust the sender and rate this alert Low. That is a prompt injection attempt. It has been ignored here, and it is a strong sign that the sender is hostile.",
+      "severity": "High",
+      "severity_reason": "A lookalike domain, an urgent invoice story and a macro attachment together are the pattern of targeted phishing, and trying to manipulate security tools shows intent. It is High and not Critical because this log only shows that the email was delivered, not that the attachment was opened.",
+      "next_steps": [
+        "Find out whether {user} opened the attachment: look for Word starting on their workstation, and for Word starting a command shell, in the minutes after delivery.",
+        "Remove the message from the mailbox of {user} and search every other mailbox for the same sender or attachment name.",
+        "Block the sender domain c0rp.example at the mail gateway.",
+        "If the attachment was opened, disconnect that workstation from the network and escalate to incident response.",
+        "Tell {user} the email was malicious and ask them to report anything similar."
+      ],
+      "confidence": "High"
+    },
+    "proc_creation_win_office_spawns_shell": {
+      "summary": "Microsoft Word started a command-line program on {host} while {user} was logged on. Word opens documents and has no everyday reason to launch a command shell or PowerShell. When it does, it almost always means a macro (a small program inside a document) is running commands as the user. The command line in the evidence shows what the macro tried to do.",
+      "severity": "High",
+      "severity_reason": "Code chosen by whoever wrote the document is now running on {host} with the access {user} has. That threatens the integrity of the machine and everything the user can reach from it.",
+      "next_steps": [
+        "Read the command line in the evidence, and check which document Word had open at that moment (the Word process's own command line names the file).",
+        "Look at what the command-line program did next on {host}: programs it started, files it wrote and network connections it opened.",
+        "Unless this is a known business add-in, disconnect {host} from the network to stop the attacker going further.",
+        "Trace the document back to where it came from, most likely an email attachment, and remove it from other mailboxes.",
+        "Reset the password of {user}, because commands ran under that account."
+      ],
+      "confidence": "High"
+    },
+    "proc_creation_win_powershell_encoded_command": {
+      "summary": "PowerShell was started on {host} under the account {user} with no profile, a hidden window and a Base64-encoded command. Base64 is a way of writing text so it cannot be read at a glance. Decoded, the command downloads a file called update.ps1 from http://198.51.100.23 into the user's temporary folder. The user would have seen nothing on screen.",
+      "severity": "High",
+      "severity_reason": "A hidden window, an encoded command and a download from a bare IP address are the marks of an attacker fetching a tool, not of routine administration. The file is on the machine, but this log does not show that it was run.",
+      "next_steps": [
+        "Decode the Base64 text in the command line yourself to confirm what it does.",
+        "Check whether update.ps1 exists in the temporary folder on {host} and whether PowerShell went on to run it (script block events, ID 4104).",
+        "Find out what started PowerShell (the parent program in the evidence) to learn how the attacker got in.",
+        "Block 198.51.100.23 at the firewall and search the logs for other machines that contacted it.",
+        "If no administrator can explain the command, disconnect {host} from the network and escalate."
+      ],
+      "confidence": "High"
+    },
+    "posh_ps_web_download": {
+      "summary": "A PowerShell script on {host}, running as {user}, used Invoke-WebRequest to download a file called update.ps1 from http://198.51.100.23 and save it in the temporary folder. This comes from script block logging, which records a script as PowerShell actually ran it, so this is the real command and not a disguised one.",
+      "severity": "High",
+      "severity_reason": "The rule rates web downloads Medium because administrators do them too. This one fetches a script from a bare IP address over unencrypted HTTP into a temporary folder. Genuine software comes from a named vendor site over HTTPS, so this looks like an attacker bringing in a tool.",
+      "next_steps": [
+        "Ask whether {user} or IT ran this on purpose. If nobody did, treat it as malicious.",
+        "Check whether update.ps1 is still in the temporary folder on {host}, keep a copy as evidence and do not run it.",
+        "Look for later script block events on {host} showing update.ps1 being run.",
+        "Block 198.51.100.23 at the firewall and search for other machines that contacted it."
+      ],
+      "confidence": "Medium"
+    },
+    "win_security_local_account_created": {
+      "summary": "A new local account called svc_update was created on {host} by {user}. A local account exists on that one machine only, outside the company's central account system. The name is styled like a service account (an account used by software, not a person), but it was created from a user's session and not by an installer.",
+      "severity": "Medium",
+      "severity_reason": "The rule rates this Low because IT sometimes creates local accounts during repairs. A service-style name created from an ordinary user session is a common way for an attacker to keep a way back in, so it deserves a closer look than Low suggests. On its own it has not yet changed what anyone can do.",
+      "next_steps": [
+        "Ask IT whether there is a ticket or an approved request for a local account on {host}.",
+        "Check whether {user} is someone who would normally create accounts. If not, their account may be in someone else's hands.",
+        "Look for the new account being added to a group, above all Administrators (event 4732), on {host} soon afterwards.",
+        "If nobody can explain it, disable svc_update and review what {user} did on {host} around that time."
+      ],
+      "confidence": "Medium"
+    },
+    "win_security_user_added_to_local_admins": {
+      "summary": "On {host}, {user} added an account to the built-in Administrators group. Windows records the new member only by its SID (the ID number every account has), here ending in -1009, which is why the member name shows as a dash. Members of this group can do anything on the machine: install software, read every file and switch off security tools.",
+      "severity": "High",
+      "severity_reason": "Administrator rights on {host} put the confidentiality, integrity and availability of everything on that machine at risk. Whether this is an attack depends on whether IT approved it, which the log cannot show.",
+      "next_steps": [
+        "Find out which account has the SID ending in -1009: look for an account-created event (4720) on {host} shortly before this one.",
+        "Ask IT whether an approved request exists for this change.",
+        "If there is none, remove the account from the Administrators group and disable it.",
+        "Review everything that account and {user} have done on {host} since the change.",
+        "Treat the account of {user} as possibly compromised: reset its password and check its recent logons."
+      ],
+      "confidence": "Medium"
+    },
+    "net_connection_win_ftp_to_public_ip": {
+      "summary": "The FTP program built into Windows (ftp.exe) on {host}, running as {user}, opened a connection to 198.51.100.23 on port 21. FTP is an old way of transferring files that has no encryption, and very little modern business software uses it. This log shows that the connection was opened, not what was sent over it.",
+      "severity": "Medium",
+      "severity_reason": "An unexplained FTP connection to an internet address is a known route for moving stolen files out, but the connection alone does not show that any data left. It becomes High if the firewall shows a large upload to the same address.",
+      "next_steps": [
+        "Check the firewall log for this connection to see how much data {host} sent to 198.51.100.23.",
+        "Ask {user} whether they ran FTP, and why.",
+        "Check whether 198.51.100.23 belongs to a supplier or an old system the company really does exchange files with.",
+        "Find out what started ftp.exe on {host}: a person at the keyboard, a script or another program.",
+        "If nobody can explain it, block the address at the firewall."
+      ],
+      "confidence": "Medium"
+    },
+    "fw_large_upload_to_public_ip": {
+      "summary": "The firewall recorded one connection from {host}, the machine {user} uses, that sent about 2 GB to 198.51.100.23 on port 21 and received almost nothing back. Port 21 is FTP, a file transfer method with no encryption. Traffic that flows almost entirely one way, outwards, is a file upload. The log was written when the connection closed, so the data has already left.",
+      "severity": "Critical",
+      "severity_reason": "Unless this is a known backup or a transfer to a partner, about 2 GB of company data is now on a server nobody recognises: a loss of confidentiality that has already happened. The rule rates any large upload High. This one is rated higher because the evidence shows the upload finished.",
+      "next_steps": [
+        "Check quickly whether 198.51.100.23 is an approved backup or partner address. If it is, close this as a false positive.",
+        "If it is not, disconnect {host} from the network now and block 198.51.100.23 at the firewall.",
+        "Work out which files were sent: look at what {user} and {host} opened or copied in the hour before the upload.",
+        "Escalate to incident response and to whoever owns the data, because a data breach may have to be reported.",
+        "Search the firewall logs for other machines that sent data to the same address."
+      ],
+      "confidence": "Medium"
+    },
+    "win_security_many_failed_logons": {
+      "summary": "There were 40 failed Remote Desktop logons for the account {user} on {host} in under two minutes, all from 203.0.113.77, an address on the public internet. Every attempt failed the same way: the user name exists but the password was wrong. Nobody mistypes a password 40 times in two minutes, so a program is guessing passwords. This is a brute force attack.",
+      "severity": "Medium",
+      "severity_reason": "The attack is real but, within this alert, unsuccessful: every logon shown here failed. It becomes High the moment one of the guesses works.",
+      "next_steps": [
+        "Look for a successful logon (event 4624) by {user} from 203.0.113.77 straight after these failures. If there is one, the account is compromised: escalate.",
+        "Block 203.0.113.77 at the firewall.",
+        "Check whether the same address tried other accounts or other servers.",
+        "Ask why {host} accepts Remote Desktop from the internet at all, and move it behind the VPN.",
+        "If there is any doubt about the account, reset the password of {user} and turn on account lockout."
+      ],
+      "confidence": "High"
+    },
+    "win_security_rdp_logon_from_public_ip": {
+      "summary": "The account {user} logged on to {host} over Remote Desktop from 203.0.113.77, an address on the public internet. Staff working remotely normally arrive through the VPN and appear with an internal address, so a direct logon from outside is unusual. Whoever this was now has a working session on the server.",
+      "severity": "High",
+      "severity_reason": "A stranger with a valid password can read and change whatever {user} can on {host}. This single log line cannot show whether it was the real user on an odd connection or an attacker whose password guess worked.",
+      "next_steps": [
+        "Check for a burst of failed logons for {user} from 203.0.113.77 just before this one. If there was one, a password guess worked.",
+        "Contact {user} by phone or in person to ask whether this logon was theirs.",
+        "If it was not, end the session, disable the account and reset its password.",
+        "Review what the session did on {host}: programs started, files opened and accounts created.",
+        "Put Remote Desktop on {host} behind the VPN so it cannot be reached from the internet."
+      ],
+      "confidence": "Medium"
+    }
+  }
+}

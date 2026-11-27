@@ -1,5 +1,6 @@
 """Sentinel's web API. Run with: uvicorn backend.main:app"""
 
+import threading
 from collections import Counter
 from contextlib import asynccontextmanager
 from pathlib import Path as FilePath
@@ -10,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlmodel import Session, col, func, select
 
 from backend import simulator
+from backend.ai import triage
 from backend.db import create_tables, get_session
 from backend.engine import detection
 from backend.explain import load_explanations
@@ -23,6 +25,7 @@ from backend.models import (
     Dashboard,
     Log,
     LogPage,
+    ReviewChange,
     RuleDetail,
     RuleInfo,
     Severity,
@@ -31,6 +34,8 @@ from backend.models import (
     TacticCount,
     Technique,
     TechniqueCount,
+    Triage,
+    TriageResult,
 )
 from backend.simulator import noise
 
@@ -40,6 +45,15 @@ RULES = detection.load_rules()
 RULES_BY_NAME = {rule.name: rule for rule in RULES}
 # The Explain mode text for each rule, checked the same way.
 EXPLANATIONS = load_explanations(set(RULES_BY_NAME))
+# The stored AI answers that demo mode serves, one per rule. Checked too.
+DEMO_ANSWERS = triage.load_demo_answers(set(RULES_BY_NAME))
+
+# Only one triage is worked out at a time. Without this, two requests for
+# the same alert arriving together would both ask the AI, and pay twice.
+# ponytail: one lock for the whole app, so alerts opened at the same moment
+# queue behind each other. Use one lock per alert if several analysts ever
+# share a Sentinel.
+TRIAGE_LOCK = threading.Lock()
 
 
 @asynccontextmanager
@@ -169,11 +183,8 @@ def _get_alert(session: Session, alert_id: int) -> Alert:
 def get_alert(alert_id: AlertId, session: SessionDep) -> AlertDetail:
     """One alert with its evidence: the logs that made the rule fire."""
     alert = _get_alert(session, alert_id)
-    logs = session.exec(
-        select(Log).where(col(Log.id).in_(alert.log_ids)).order_by(col(Log.time), col(Log.id))
-    ).all()
     rule = RULES_BY_NAME.get(alert.rule_id)
-    return AlertDetail(alert=alert, logs=logs, rule=_rule_info(rule) if rule else None)
+    return AlertDetail(alert=alert, logs=_alert_logs(session, alert), rule=_rule_info(rule) if rule else None)
 
 
 @app.patch("/api/alerts/{alert_id}")
@@ -186,6 +197,61 @@ def set_alert_status(alert_id: AlertId, change: StatusChange, session: SessionDe
     session.commit()
     session.refresh(alert)
     return alert
+
+
+def _alert_logs(session: Session, alert: Alert) -> list[Log]:
+    """The alert's evidence, oldest first."""
+    return session.exec(
+        select(Log).where(col(Log.id).in_(alert.log_ids)).order_by(col(Log.time), col(Log.id))
+    ).all()
+
+
+def _get_triage(session: Session, alert_id: int) -> Triage | None:
+    return session.exec(select(Triage).where(Triage.alert_id == alert_id)).first()
+
+
+@app.post("/api/alerts/{alert_id}/triage")
+def triage_alert(alert_id: AlertId, session: SessionDep) -> TriageResult:
+    """The AI's triage of one alert. The first request works it out and
+    stores it; every later request returns the stored one.
+
+    If the AI cannot answer, nothing is stored and the reason is returned,
+    so the page can show the rule's own explanation and offer to try again.
+    """
+    alert = _get_alert(session, alert_id)
+    with TRIAGE_LOCK:
+        stored = _get_triage(session, alert_id)
+        if stored is None:
+            try:
+                stored = triage.suggest(
+                    alert, RULES_BY_NAME.get(alert.rule_id), _alert_logs(session, alert), DEMO_ANSWERS
+                )
+            except triage.Unavailable as problem:
+                return TriageResult(triage=None, problem=str(problem))
+            session.add(stored)
+            session.commit()
+            session.refresh(stored)
+    return TriageResult(triage=stored)
+
+
+@app.patch("/api/alerts/{alert_id}/triage")
+def review_triage(alert_id: AlertId, change: ReviewChange, session: SessionDep) -> Triage:
+    """Record the analyst's decision. The AI's own words are left as they
+    were; the analyst's go in the `final_` fields beside them."""
+    stored = _get_triage(session, alert_id)
+    if stored is None:
+        raise HTTPException(status_code=404, detail="This alert has no triage to review yet")
+    agrees = (change.severity, change.summary, change.next_steps) == (
+        stored.severity, stored.summary, stored.next_steps
+    )
+    stored.review = "Accepted" if agrees else "Edited"
+    stored.final_severity = change.severity
+    stored.final_summary = change.summary
+    stored.final_next_steps = change.next_steps
+    session.add(stored)
+    session.commit()
+    session.refresh(stored)
+    return stored
 
 
 @app.get("/api/dashboard")
