@@ -10,6 +10,12 @@ services:
     volumes:
       # Keeps the database when the container is stopped or rebuilt.
       - sentinel-data:/data
+    # Settings such as the Claude API key come from a file named ".env" (see
+    # .env.example). The file is optional: without it the app runs in demo
+    # mode. The key is handed to the running app only; it is not in the image.
+    env_file:
+      - path: .env
+        required: false
 
 volumes:
   sentinel-data:

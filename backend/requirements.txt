@@ -2,3 +2,4 @@ fastapi==0.165.0
 uvicorn[standard]==0.54.0
 sqlmodel==0.0.50
 PyYAML==6.0.4
+anthropic==2.14.0

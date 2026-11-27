@@ -1,5 +1,5 @@
-"""The database tables (logs and the alerts raised from them) and the
-shapes of the API's answers.
+"""The database tables (logs, the alerts raised from them, and the triage
+of each alert) and the shapes of the API's answers.
 
 Real SOC tools receive logs from many sources (Windows, Sysmon, firewalls...)
 and "normalise" them into one shape so the same rules can read them all.
@@ -7,10 +7,10 @@ This is Sentinel's shape: every simulated log line becomes one Log row.
 """
 
 from datetime import datetime, timezone
-from typing import Literal, get_args
+from typing import Annotated, Literal, get_args
 
 from pydantic import field_serializer
-from sqlmodel import JSON, Column, Field, SQLModel
+from sqlmodel import JSON, AutoString, Column, Field, SQLModel
 
 from backend.explain import Explanation
 
@@ -67,6 +67,69 @@ class Alert(SQLModel, table=True):
     status: str = STATUSES[0]  # one of STATUSES; every alert starts as "New"
 
     _time_as_utc = field_serializer("time")(_as_utc)
+
+
+Confidence = Literal["Low", "Medium", "High"]
+# One step of advice: a sentence, never empty and never a whole essay.
+Step = Annotated[str, Field(min_length=1, max_length=500)]
+
+
+class Suggestion(SQLModel):
+    """A triage suggestion for one security alert."""
+
+    # This class is exactly what the AI is allowed to answer, and the AI is
+    # sent it as the format to follow. The answer is untrusted until it has
+    # passed through here: anything missing, misspelt or over-long is
+    # rejected, and the alert page falls back to the rule's own explanation.
+
+    summary: str = Field(min_length=1, max_length=2000)  # what happened, in plain English
+    # sa_type says how the database stores these two: as plain text.
+    severity: Severity = Field(sa_type=AutoString)
+    severity_reason: str = Field(min_length=1, max_length=1000)
+    # What the analyst should do, most urgent first.
+    next_steps: list[Step] = Field(min_length=1, max_length=8, sa_column=Column(JSON, nullable=False))
+    confidence: Confidence = Field(sa_type=AutoString)  # how sure the AI is, given only this evidence
+
+
+# Has a person looked at the suggestion yet, and did they agree with it?
+Review = Literal["Not reviewed", "Accepted", "Edited"]
+
+
+class Triage(Suggestion, table=True):
+    """The AI's suggestion for one alert, and what the analyst decided.
+
+    The fields inherited from Suggestion are the AI's words and are never
+    changed, so there is always a record of what it said. The analyst's own
+    decision is stored beside them in the `final_` fields.
+    """
+
+    id: int | None = Field(default=None, primary_key=True)
+    alert_id: int = Field(foreign_key="alert.id", unique=True)  # one triage per alert
+    source: str  # "live": Claude answered just now. "demo": a stored answer.
+    model: str | None = None  # which Claude model answered (live mode only)
+
+    review: str = "Not reviewed"  # one of Review
+    # Empty until the analyst accepts or edits the suggestion.
+    final_severity: str | None = None
+    final_summary: str | None = None
+    final_next_steps: list[str] | None = Field(default=None, sa_column=Column(JSON))
+
+
+class TriageResult(SQLModel):
+    """What POST /api/alerts/{id}/triage returns. When the AI cannot answer,
+    `triage` is empty and `problem` says why in words safe to show anyone."""
+
+    triage: Triage | None
+    problem: str = ""
+
+
+class ReviewChange(SQLModel):
+    """What PATCH /api/alerts/{id}/triage accepts: the analyst's final word.
+    Sending back exactly what the AI said counts as accepting it."""
+
+    severity: Severity
+    summary: str = Field(min_length=1, max_length=2000)
+    next_steps: list[Step] = Field(max_length=8)
 
 
 class LogPage(SQLModel):
