@@ -103,9 +103,16 @@ function OpenAlerts({ board }: { board: Dashboard }) {
             <span className="ml-3 text-lg font-medium">open {open === 1 ? 'alert' : 'alerts'}</span>
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            {total === 0
-              ? 'No rule has fired yet. Run a scenario to see the detection rules at work.'
-              : open === 0
+            {total === 0 ? (
+              // A first-time visitor lands here with nothing on screen yet.
+              <>
+                No rule has fired yet. Run a scenario to see the detection rules at work, or{' '}
+                <a href="#/about" className="text-link">
+                  read what Sentinel is
+                </a>
+                .
+              </>
+            ) : open === 0
                 ? 'The queue is clear: every alert has been closed.'
                 : 'New or in progress: nobody has yet decided whether these are real attacks.'}
           </p>

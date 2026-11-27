@@ -2,6 +2,9 @@
 
 import type { Log, Severity } from '@/lib/api'
 
+// Where Sentinel's code lives. The About page and the footer link to it.
+export const SOURCE_URL = 'https://github.com/mohamedhassan420/sentinel'
+
 // Each severity has its own colour, used for a dot beside the word and a
 // stripe down a table row's left edge. The word is always shown too, so
 // nothing depends on telling colours apart.

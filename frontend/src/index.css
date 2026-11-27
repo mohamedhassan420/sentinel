@@ -37,8 +37,8 @@
   /* Severity colours, used from Phase 2 on. Kept apart from the accent so
      teal never gets mistaken for a severity. */
   --severity-low: #6b9bd1;
-  --severity-medium: #d9b44a;
-  --severity-high: #e0823d;
+  --severity-medium: #dcc24a; /* a clear yellow, so it is not taken for High's orange */
+  --severity-high: #e3783a;
   --severity-critical: #e5484d;
 
   /* The ATT&CK strip on the dashboard: one colour in three strengths.
