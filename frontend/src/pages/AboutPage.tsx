@@ -139,8 +139,8 @@ export default function AboutPage() {
             <li>The company. Hosts such as WKS-FIN-03 and users such as a.khan do not exist.</li>
             <li>The attackers' addresses, which come from ranges reserved for examples in documentation.</li>
             <li>
-              The AI answers in demo mode, which is what the public site runs. They are stored examples written by
-              hand, so the site needs no API key.
+              The AI answers in demo mode, the default when there is no API key. They are stored examples written by
+              hand.
             </li>
           </Facts>
           <Facts title="Real">
@@ -235,9 +235,9 @@ export default function AboutPage() {
             <Fact term="Backend">Python 3.12, FastAPI and SQLite</Fact>
             <Fact term="Frontend">React, TypeScript and Tailwind CSS</Fact>
             <Fact term="Tests">Every rule is tested both ways, and the tests run on every change</Fact>
-            <Fact term="The public site">
-              One Docker container on a free host. It sleeps after 15 quiet minutes, so the first page can take a
-              minute to load. Everyone shares one store of logs, which empties itself when it fills up.
+            <Fact term="Running it">
+              One Docker container on your own computer, started with docker compose up. The store of logs empties
+              itself when it fills up.
             </Fact>
           </dl>
         </div>

@@ -11,14 +11,14 @@ A threat model is a written answer to four questions: what are we building, what
 | The Claude API key and the credit behind it | Live mode only. A leaked or abused key spends Mohamed's money. |
 | The analyst's trust in the screen | If log text can change what the AI says, or what the page shows, the tool misleads the person it is meant to help. |
 | The visitor's browser | A page that runs an attacker's script can do anything the visitor can. |
-| The public demo staying up | It is linked from a CV. A demo that is down or defaced is worse than none. |
+| The app staying up | Anyone who runs it, or ever hosts it, needs it to keep working. |
 | The code and its build | A poisoned dependency ships with everything else. |
 
 There are no user accounts, passwords or personal data. Every log line is simulated.
 
 ## Who might attack it
 
-1. **A stranger on the internet.** The public site has no login, so anyone, including automated scanners, can call every API route.
+1. **A stranger on the network.** Sentinel is not hosted publicly, but it is built as if it were. It has no login, so anyone, including automated scanners, can call every API route.
 2. **The attacker inside the logs.** In a real SOC part of every log is written by the attacker: an email subject, a file name, a command line. Sentinel treats all log text as hostile, and one simulated phishing email carries a real prompt-injection attempt to prove the point.
 3. **Another website in the owner's browser.** While Sentinel runs on `localhost`, any site open in another tab can make the browser send it requests.
 4. **A compromised dependency** on PyPI or npm.
@@ -26,10 +26,10 @@ There are no user accounts, passwords or personal data. Every log line is simula
 ## Where trust changes hands
 
 ```
-visitor's browser ──HTTPS──► Hugging Face's proxy ──► one container: FastAPI + SQLite file
+browser on this computer ──► localhost:8000 ──► one container: FastAPI + SQLite file
                                                    │
         log text (untrusted) ──► page, PDF, AI     └──► Anthropic API (live mode only,
-                                                        never on the public site)
+                                                        only with a key in .env)
 ```
 
 The three places untrusted text crosses into something that could act on it are the web page, the PDF report and the AI prompt. Each has its own defence below.
@@ -41,15 +41,15 @@ The three places untrusted text crosses into something that could act on it are 
 | 1 | **Prompt injection.** Log text tells the AI to lower a severity or close the alert. | Instructions and logs travel separately; logs sit in an `<evidence>` block they cannot close; the AI is told the block is evidence; its answer must fit a fixed shape and it has no tools; nothing changes until a person accepts, and a suggestion below the rule's severity carries a warning. | `backend/ai/guard.py`, `backend/models.py`, tests in `test_ai.py` |
 | 2 | **Cross-site scripting (XSS).** Log text runs as script in the page. | React shows all log text as plain text; the code never builds HTML from data. A Content Security Policy is the second layer: the browser runs no script that did not come from Sentinel's own files. | `frontend/src`, `backend/main.py` |
 | 3 | **HTML injection into the PDF.** Log text becomes a tag in the report and makes the server fetch an address or read a file. | The template escapes everything; the PDF builder may load only the font files beside the template and nothing from the network. | `backend/reports/report.py` |
-| 4 | **The API key leaks.** | It lives only in the `ANTHROPIC_API_KEY` environment variable. `.env` is in `.gitignore` and `.dockerignore`, the code never logs or returns it, and the git history has been searched for keys. The public site has no key at all. | `.gitignore`, `backend/ai/triage.py`, `.github/workflows/ci.yml` |
-| 5 | **Someone else spends the AI credit.** | The public site is forced into demo mode and never contacts the API. Locally, Docker publishes the app to this computer only; each alert is triaged once and stored; each request has a token limit and carries at most 50 log lines; and writes set off by another website are refused. | `.github/workflows/ci.yml` (the deploy job), `compose.yaml`, `backend/main.py`, `backend/ai/guard.py` |
+| 4 | **The API key leaks.** | It lives only in the `ANTHROPIC_API_KEY` environment variable. `.env` is in `.gitignore` and `.dockerignore`, the code never logs or returns it, and the git history has been searched for keys. Without a key the app runs in demo mode. | `.gitignore`, `backend/ai/triage.py` |
+| 5 | **Someone else spends the AI credit.** | There is no hosted copy holding a key. Locally, Docker publishes the app to this computer only; each alert is triaged once and stored; each request has a token limit and carries at most 50 log lines; and writes set off by another website are refused. | `compose.yaml`, `backend/main.py`, `backend/ai/guard.py` |
 | 6 | **Cross-site request forgery (CSRF).** A website the owner visits makes their browser run scenarios or request triages on `localhost`. | Every request that changes data is refused unless the browser says it came from Sentinel's own page (the `Sec-Fetch-Site` header). | `backend/main.py` |
 | 7 | **Filling the disk or exhausting the server.** | The log store is emptied when it reaches 20,000 lines; every filter and list has a length or size limit; one PDF is built at a time; one AI answer is worked out at a time. | `backend/main.py` |
 | 8 | **SQL injection.** | Every query goes through SQLModel with bound parameters; search text is escaped so `%` and `_` match literally; numbers are range-checked. | `backend/main.py` |
 | 9 | **Tampering with evidence.** | The API can change an alert's status and the analyst's review, and nothing else. Logs, alerts and the AI's original words cannot be edited. Status and severity accept only their fixed values. | `backend/main.py`, `backend/models.py` |
 | 10 | **Reading other files through a rule name.** | The name is looked up among the rules loaded at startup and is never used to open a file. | `backend/main.py`, `test_api.py` |
 | 11 | **A hostile rule file.** | Rules are read with YAML's safe loader. A rule's condition is parsed into a tree and checked against a short allow-list; it is never run as code. | `backend/engine/detection.py` |
-| 12 | **Clickjacking.** Another site shows Sentinel in a hidden frame and tricks the visitor into pressing its buttons. | The app forbids being framed. The one exception is the public demo, where huggingface.co may frame it, because Hugging Face shows every Space inside its own page. No other site may. | `backend/main.py` |
+| 12 | **Clickjacking.** Another site shows Sentinel in a hidden frame and tricks the visitor into pressing its buttons. | The app forbids being framed. | `backend/main.py` |
 | 13 | **A vulnerable or poisoned dependency.** | Python packages are pinned to exact versions and npm packages by a lock file. `pip-audit` and `npm audit` both report no known vulnerabilities (27 Nov 2026). The container runs as an ordinary user, and the GitHub workflow has read-only access to the repo. | `backend/requirements.txt`, `frontend/package-lock.json`, `Dockerfile`, `.github/workflows/ci.yml` |
 
 ## Fixed in Phase 6
@@ -68,8 +68,8 @@ Things left as they are, on purpose, with the reason.
 
 | Risk | Why it is accepted |
 | --- | --- |
-| **No login.** Anyone can run scenarios, change statuses and edit AI text on the public demo. | It is a sandbox of simulated data, and a login would stop a recruiter trying it. A real deployment needs accounts and roles first. |
-| **Visitors share one store.** Text one visitor types into an edited summary is shown to the next. | The text is escaped and length-limited, so it cannot run or grow. It lasts only until the free host sleeps (15 quiet minutes) or the store fills. |
+| **No login.** Anyone can run scenarios, change statuses and edit AI text for anyone who can reach it. | It runs on the owner's computer only, and it is a sandbox of simulated data. A login would only get in the way. A real deployment needs accounts and roles first. |
+| **Visitors share one store.** Text one visitor types into an edited summary is shown to the next. | The text is escaped and length-limited, so it cannot run or grow. Locally the only visitor is the owner; it lasts until the store fills. |
 | **No rate limit per visitor.** | The host's own network protection is the only brake. The limits in threat 7 bound what a flood can do, and the worst outcome is a restart with an empty store. |
 | **Browsers from before 2023 get no CSRF protection**, and neither does an attack that points a hostile domain name at `localhost` (DNS rebinding). | Both need the owner to be running live mode and browsing a hostile site at the same time, and the damage is capped by the prepaid balance. The fix is a check of the `Origin` and `Host` headers. |
 | **The API's documentation page (`/docs`) is public** and loads its script from a public library host. | It documents an API that is public anyway, and it is useful in a demo. It shows no log text. |
@@ -102,4 +102,4 @@ None is High or Critical. All are about availability, or about spending API cred
 | F5 | Low | The incident summary prompt has no cap on the number of alerts, so its cost grows with the incident. | Cap the alerts block at 50, like the evidence lines |
 | F6 | Low | Live AI calls have no overall rate limit, and failures are retried, so each `POST` can bill again. | A per-minute cap on live calls, and a spending cap on the key in the Console |
 
-F4 to F6 are open, by decision. They need live mode on the owner's own computer, which the public site never runs. Their suggested fixes are in the table.
+F4 to F6 are open, by decision. They need live mode on the owner's own computer, and Sentinel is not hosted anywhere. Their suggested fixes are in the table.

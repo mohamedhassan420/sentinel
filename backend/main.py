@@ -1,6 +1,5 @@
 """Sentinel's web API. Run with: uvicorn backend.main:app"""
 
-import os
 import threading
 from collections import Counter, defaultdict
 from contextlib import asynccontextmanager
@@ -107,6 +106,9 @@ app = FastAPI(title="Sentinel", lifespan=lifespan, max_body_size=MAX_BODY_BYTES)
 SECURITY_HEADERS = {
     # Never guess a file's type from its contents: a file is what we say it is.
     "X-Content-Type-Options": "nosniff",
+    # No other site may show Sentinel inside a frame, where it could trick a
+    # visitor into pressing Sentinel's buttons (called clickjacking).
+    "X-Frame-Options": "DENY",
     # Do not tell other sites which Sentinel page a visitor came from.
     "Referrer-Policy": "no-referrer",
     # Once a browser has reached Sentinel over HTTPS, it keeps using HTTPS.
@@ -118,13 +120,9 @@ SECURITY_HEADERS = {
 # written into the page. Log text is already shown as plain text, so this is
 # a second lock on the same door: if attacker-written text ever did reach the
 # page as HTML, the browser would still refuse to run it.
-CONTENT_SECURITY_POLICY = "default-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'"
-# Which sites may show Sentinel inside a frame. A framed page can be used to
-# trick a visitor into pressing its buttons (called clickjacking), so the
-# answer is normally "none". Hugging Face shows every Space inside a frame on
-# its own huggingface.co page, so the public demo's Dockerfile sets
-# SENTINEL_FRAME_ANCESTORS=https://huggingface.co, and only that site may.
-FRAME_ANCESTORS = os.environ.get("SENTINEL_FRAME_ANCESTORS", "'none'")
+CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+)
 # FastAPI's own documentation pages load their script from a public library
 # host, so the policy above would leave them blank. They show no log text.
 PAGES_WITHOUT_POLICY = ("/docs", "/redoc")
@@ -147,16 +145,8 @@ async def browser_safeguards(request: Request, call_next):
         return JSONResponse({"detail": "Requests from other websites are not accepted."}, status_code=403)
     response = await call_next(request)
     response.headers.update(SECURITY_HEADERS)
-    if request.url.path.startswith(PAGES_WITHOUT_POLICY):
-        # Without the policy, the older header is the only frame lock left.
-        response.headers["X-Frame-Options"] = "DENY"
-    else:
-        response.headers["Content-Security-Policy"] = f"{CONTENT_SECURITY_POLICY}; frame-ancestors {FRAME_ANCESTORS}"
-        if FRAME_ANCESTORS == "'none'":
-            # The same rule for browsers too old to read frame-ancestors.
-            # This header cannot name an allowed site, so it is left off
-            # when one is allowed.
-            response.headers["X-Frame-Options"] = "DENY"
+    if not request.url.path.startswith(PAGES_WITHOUT_POLICY):
+        response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
     return response
 
 SessionDep = Annotated[Session, Depends(get_session)]

@@ -5,7 +5,7 @@
 
 **An AI-assisted SOC triage tool.** It simulates five attack scenarios as log lines, detects them with Sigma-style rules mapped to MITRE ATT&CK, and turns the alerts into incident timelines and PDF reports.
 
-A SOC (security operations centre) is the team that watches an organisation's logs for attacks. Sentinel walks through that team's whole loop, logs → detection → triage → incident → report, with nothing but a browser. Nothing here attacks anything: the simulator only writes text log lines into a local database.
+A SOC (security operations centre) is the team that watches an organisation's logs for attacks. Sentinel walks through that team's whole loop, logs → detection → triage → incident → report, with nothing but a browser. It runs on your own computer with one Docker command; there is no hosted demo. Nothing here attacks anything: the simulator only writes text log lines into a local database.
 
 ![The full attack chain: an empty dashboard, then nine alerts, the alert queue, the incident timeline and the AI incident summary](docs/screenshots/full-attack-chain.gif)
 
@@ -23,17 +23,22 @@ A SOC (security operations centre) is the team that watches an organisation's lo
 
 ![An incident page: nine alerts on a timeline, each with its ATT&CK tactic and the log line that set it off](docs/screenshots/incident-timeline.png)
 
-## Run it yourself
+## Run it
 
-You need [Docker Desktop](https://www.docker.com/products/docker-desktop/) running.
+You need [Docker Desktop](https://www.docker.com/products/docker-desktop/) running. Get the code:
 
 ```
 git clone https://github.com/mohamedhassan420/sentinel.git
 cd sentinel
+```
+
+Then one command builds and starts the whole app:
+
+```
 docker compose up --build
 ```
 
-Then open http://localhost:8000. No API key is needed: out of the box the AI answers are stored examples (see [AI triage](#ai-triage)).
+Open http://localhost:8000. Only your own computer can reach it. No API key is needed: out of the box the AI answers are stored examples (see [AI triage](#ai-triage)).
 
 1. On the **Dashboard**, leave the scenario on **Full attack chain** and press **Run scenario**. The counts and the ATT&CK strip update, and the result line says the nine alerts were grouped into one incident.
 2. Open **Incidents** and select the incident. Its timeline shows the nine alerts in order, from the phishing email to the upload. Below it is the AI incident summary. Press **Download report** for the PDF.
@@ -67,8 +72,8 @@ One Python backend moves data through these stages and one React app shows each 
 | AI | Claude through the official `anthropic` SDK, with structured output | The answer must fit a fixed format, so a severity can only be one of four words. |
 | PDF reports | WeasyPrint | The report is designed as a web page and printed to PDF. |
 | Frontend | React, TypeScript, Vite, Tailwind CSS, shadcn/ui | The most common frontend stack in job adverts. |
-| Tests | pytest: 223 tests | Every rule is tested both ways, and GitHub Actions runs everything on each push. |
-| Delivery | Docker, deployed on Hugging Face Spaces (free) | One command runs it anywhere. The public site runs in demo mode. |
+| Tests | pytest: 226 tests | Every rule is tested both ways, and GitHub Actions runs everything on each push. |
+| Delivery | Docker | One command runs it on any computer with Docker. There is no hosted copy. |
 
 ## Detection coverage
 
@@ -123,7 +128,7 @@ Each alert page has an AI triage card: what happened, a suggested severity with 
 
 There are two modes:
 
-- **Demo mode** (the default, and what the public site runs). The card shows a stored answer from [backend/ai/demo_responses.json](backend/ai/demo_responses.json), one per detection rule, with the alert's host and user filled in. Nothing is sent anywhere and no key is needed. **These ten answers, and the six incident summaries in the same file, were written by hand** in the style of a live answer. They did not come from a live API call.
+- **Demo mode** (the default, with no key). The card shows a stored answer from [backend/ai/demo_responses.json](backend/ai/demo_responses.json), one per detection rule, with the alert's host and user filled in. Nothing is sent anywhere and no key is needed. **These ten answers, and the six incident summaries in the same file, were written by hand** in the style of a live answer. They did not come from a live API call.
 - **Live mode.** The alert's rule and evidence are sent to Claude through the Anthropic API, using the official Python SDK with structured output, so the answer must fit a fixed format. Each alert is triaged once, the first time it is opened, and the answer is stored. Live mode has been tested against a stand-in for the API, not yet against the real one.
 
 If the AI cannot be reached, declines or answers in the wrong format, the card says so and the rest of the page works as before.
@@ -142,7 +147,7 @@ A new alert's card then says "Answered by claude-opus-5-5". Alerts already opene
 
 Sentinel is a security project, so it was reviewed as a target too. The full write-up is [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md): what is protected, who might attack it, thirteen threats with their defences, and the risks that were accepted on purpose.
 
-**Demo mode protects the public site.** It serves stored answers and never contacts the AI service, so strangers cost nothing and there is no key on the server to steal.
+**Demo mode needs no key.** It serves stored answers and never contacts the AI service, so trying Sentinel costs nothing and there is no key to steal.
 
 **The API key stays out of the code.** It lives only in the `ANTHROPIC_API_KEY` environment variable, read from a local `.env` file. `.env` is in `.gitignore` and `.dockerignore`, so the key is never committed and never copied into the Docker image. The code does not contain it, log it or return it.
 
@@ -162,7 +167,7 @@ SENTINEL_LIVE_TESTS=1 ANTHROPIC_API_KEY=... backend/.venv/Scripts/pytest backend
 
 The same distrust applies on screen and on paper: the browser shows log text as plain text, never as HTML, and the PDF template escapes it and may not fetch anything from the network.
 
-**The public site is open to everyone, so it has limits.** Requests that change data are refused when another website set them off. The log store empties itself at 20,000 lines. One PDF is built at a time. Every answer carries security headers, including a Content Security Policy that stops the page running any script that is not Sentinel's own.
+**It is built to survive being open to strangers.** Sentinel is not hosted anywhere, but it was hardened as if it were. Requests that change data are refused when another website set them off. The log store empties itself at 20,000 lines. One PDF is built at a time. Every answer carries security headers, including a Content Security Policy that stops the page running any script that is not Sentinel's own.
 
 **Review results (27 November 2026).** A manual review of all the code found five weaknesses, all fixed and tested: no limit on stored data, no limit on PDF requests, writes accepted from other websites, missing security headers, and four moderate advisories in a build-time package. `pip-audit` and `npm audit` now report no known vulnerabilities, and the git history holds no keys. The Claude Security plugin then scanned the backend. Each finding was checked by an independent verifier panel. It found nothing High or Critical, and 3 Medium and 3 Low issues about availability and API spending. The Medium ones are fixed: request bodies are capped at 64 KB, a busy PDF builder refuses at once instead of queuing, and a report lists at most 100 alerts. The Low ones only matter in live mode on your own computer and are documented in the threat model's review log.
 
@@ -172,7 +177,7 @@ The same distrust applies on screen and on paper: the browser shows log text as 
 - **Detection is a trade-off.** A looser rule catches more attacks and more innocent activity. Every rule here is tested against the attack and against harmless look-alikes, because a rule that cries wolf gets ignored.
 - **MITRE ATT&CK gives the story a shape.** A tactic is the attacker's goal and a technique is the method. In the full attack chain the tactics light up in order, from Initial Access to Exfiltration.
 - **AI belongs beside the analyst.** It is fast and consistent, and it can be confidently wrong or manipulated through the data it reads. So it suggests, a person decides, and the app works without it.
-- **A security tool is a target.** Writing the threat model changed the code: the public demo gained limits and headers it did not have the day before.
+- **A security tool is a target.** Writing the threat model changed the code: the app gained limits and headers it did not have the day before.
 
 The longer version, phase by phase, is in [docs/LEARNING.md](docs/LEARNING.md).
 
@@ -194,7 +199,6 @@ Smaller ideas parked during the build:
 - Triaging new alerts in the background, and a way to ask the AI again for an alert that already has a stored triage.
 - Sorting the alert queue by severity, a chart of alerts over time, and paging through logs older than the newest 200.
 - A "Clear logs" button, and an off-hours check for the exfiltration scenario.
-- A preview image for shared links, once the public address is settled.
 - Starlette's test client now prefers `httpx2` over `httpx` (a deprecation warning in the test run). Switch once that is settled.
 
 ## Develop
@@ -220,8 +224,6 @@ The frontend dev server on http://localhost:5173 passes `/api` requests to the b
 
 The PDF step needs the Pango library, which Windows does not have. Run natively, everything else works and **Download report** says to use Docker. One test (printing a real PDF) is skipped on a computer without Pango. It runs on GitHub, where a skip would count as a failure.
 
-**The public demo** runs on a free Docker Space on [Hugging Face](https://huggingface.co/spaces). After both checks pass on `main`, the `deploy` job in [.github/workflows/ci.yml](.github/workflows/ci.yml) pushes the Space one fresh commit. That commit holds the Dockerfile, `backend/`, `frontend/` and the Space's description ([deploy/huggingface-space.md](deploy/huggingface-space.md)), and nothing else. The job also adds lines to that copy of the Dockerfile that force demo mode on, and that let huggingface.co, and no other site, show the app in its page. A free Space sleeps after two days without visitors, and its log store starts empty each time it restarts.
-
 ## Layout
 
 ```
@@ -237,7 +239,6 @@ backend/
   tests/
 frontend/         the React app
 docs/             plan, decisions, learning notes, threat model, interview prep, demo script and screenshots
-deploy/          the Hugging Face Space's description (the deploy job is in .github/workflows/ci.yml)
 ```
 
 ## How it was built
