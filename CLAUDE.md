@@ -42,7 +42,7 @@ Mohamed starts each phase with "Build Phase N". For each phase:
 4. Run the tests and the app. Fix anything broken before calling the phase done.
 5. Check the phase's **Done when** line yourself, then tell Mohamed exactly what to open and click to see it working.
 6. Add a half-page plain-English entry to `docs/LEARNING.md`: what was built, why it works this way, and the phase's "What Mohamed learns" points with short model answers to its 3 check questions.
-7. Commit with clear messages and push. Open a pull request for the phase. Once its GitHub checks pass, merge it yourself (`gh pr merge --merge --delete-branch`), then switch to `main` and pull. Never merge while a check is failing or still running. If the checks are still running when you finish, say so and merge at the start of your next turn. (GitHub's built-in auto-merge is unavailable while the repo is private on the free plan. If the repo becomes public or Mohamed gets GitHub Pro, turn on auto-merge with required checks and use that instead.)
+7. Commit with clear messages and push. Open a pull request for the phase. Turn on auto-merge for it right away (`gh pr merge --auto --merge`): GitHub merges it by itself once the required `backend` and `frontend` checks pass, and deletes the branch. If a check fails, fix it on the branch; the PR stays open until it passes. Once it is merged, switch to `main` and pull. (Auto-merge and the required checks were turned on on 27 Nov 2026, when the repo became public.)
 8. Stop. Do not start the next phase until Mohamed asks.
 
 ## Model and effort per phase
