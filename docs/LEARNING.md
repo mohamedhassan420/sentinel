@@ -214,3 +214,59 @@ It is an attacker hiding instructions in data an AI reads, such as an email subj
 
 **Where is the API key stored?**
 In an environment variable called `ANTHROPIC_API_KEY`, which Docker reads from a local `.env` file when the app starts. The file is in `.gitignore`, so it never reaches GitHub, and it is not copied into the Docker image either. The code never contains the key and never prints it. The public site has no key at all: it runs in demo mode with stored answers.
+
+## Phase 5: Incident timeline and PDF report
+
+### What was built
+
+- **Correlation**, in `backend/engine/correlation.py`. It groups related alerts into *incidents*. Running the full attack chain now gives one incident holding all nine alerts.
+- **An Incidents page and an incident page.** The incident page shows a timeline: the alerts in the order they happened, each with its ATT&CK tactic and the log line that set it off. Side panels list the indicators of compromise and the ATT&CK techniques. The dashboard counts open incidents.
+- **An AI incident summary.** It tells the story of the whole attack, gives a severity for the incident as a whole, and lists containment and recovery steps. It works like the triage card from Phase 4: a suggestion until the analyst accepts or edits it. Demo mode has a stored summary for each of the six scenarios, written by hand.
+- **A PDF report.** "Download report" builds a PDF with six sections: executive summary, timeline, affected hosts and users, indicators of compromise, ATT&CK techniques and recommended actions.
+- **Tests.** 219 now, 54 of them new. One checks the correlation against a slow, obvious method on 40 random sets of alerts.
+
+### Why it works this way
+
+- **Two alerts are linked when they share a host or a user and happened within 30 minutes of each other.** An incident is a chain of linked alerts. If A is linked to B and B to C, all three are one incident, even when A and C share nothing directly. That is how the phishing email (logged by the mail gateway) ends up with what happened on the victim's workstation: they share the user.
+- **The mail gateway does not count as a shared host.** Everyone's email is logged there. Without this exception, two phishing emails to two different people would become one incident.
+- **An incident stores almost nothing.** Each alert records which incident it belongs to. The incident's hosts, users, times, severity and status are worked out from its alerts every time they are asked for, so they can never be out of date.
+- **An incident is Open while any of its alerts still needs a decision.** There is no separate incident status to keep in step with the alerts.
+- **A false positive stops counting.** It stays on the timeline, marked, but it no longer adds to the incident's severity, tactics or indicators, and the report leaves it out.
+- **The report is a web page printed to PDF.** The page is a template filled in with the incident's facts. A tool called WeasyPrint lays it out on A4 paper. Log text is *escaped* on the way in: any `<` or `>` an attacker put in a log is shown as plain text and can never become part of the page.
+- **Addresses in the report are defanged.** `198.51.100.23` is printed as `198[.]51[.]100[.]23` and `http` as `hxxp`. A person can still read them, but no program will turn them into a link that someone clicks by accident.
+- **The report works without AI.** If there is no AI summary, the executive summary is built from the alert data and the steps are a general checklist. The report always says who wrote its text: the AI (not yet reviewed), or the analyst.
+
+### What Mohamed learns
+
+**The incident response steps**
+
+Security+ teaches incident response as seven steps, in order:
+
+1. **Preparation.** Having the tools, logs, rules and plans ready before anything happens. Sentinel's rules and Explain pages are preparation.
+2. **Detection.** Noticing that something happened. This is the alert.
+3. **Analysis.** Working out what it is, how bad it is and how far it got. Triage and the incident timeline are analysis.
+4. **Containment.** Stopping it spreading: isolating a machine, disabling an account, blocking an address.
+5. **Eradication.** Removing what the attacker left: malware, new accounts, scheduled tasks.
+6. **Recovery.** Returning to normal: rebuilding machines, restoring data, watching for a return.
+7. **Lessons learned.** Reviewing what happened and improving the rules and defences.
+
+Containment comes before eradication on purpose. First stop the damage, then clean up.
+
+**Why correlation matters**
+
+Each alert of the full attack chain has a modest severity: Medium for the email, Low for the new account, High at most. Read one at a time, an analyst might close several as "probably nothing". Seen together, in order, on one machine in half an hour, they are a complete break-in: way in, code run, administrator rights taken, data gone. The AI summary rates the incident Critical although no single alert is. Correlation also cuts the work: one incident to investigate, not nine alerts.
+
+**Indicators of compromise (IoCs)**
+
+An indicator is a concrete piece of evidence that can be searched for or blocked. The common kinds are IP addresses, domain names, web addresses, email senders, file names and file hashes. (A hash is a fingerprint of a file's contents: the same file always gives the same hash, whatever it is renamed to. Sentinel's simulated logs carry no hashes yet.) A report lists indicators so the next team can act on them: block the address at the firewall, search every mailbox for the sender, look for the file on other machines.
+
+### Check questions
+
+**How does Sentinel decide alerts belong together?**
+Two alerts are linked if they share a host or a user and happened within 30 minutes of each other. An incident is every alert connected by such links, directly or through other alerts. A new alert joins the incident it is linked to, starts a new one if it is linked to nothing, and joins two incidents into one if it is linked to both. One exception: the mail gateway does not count as a shared host, because everyone's email passes through it. The trade-off to mention: it is a simple rule, so two unrelated problems on one machine within half an hour would be grouped, and a slow attacker who waits an hour between steps would be split in two.
+
+**Which IR step does each report section support?**
+The executive summary supports *analysis* and tells managers what happened and how bad it is. The timeline supports *detection and analysis*: what was seen, in what order. Affected hosts and users give the scope, which *containment* needs: these are the machines to isolate and the accounts to reset. The indicators support *containment and eradication*: what to block and what to hunt for on other machines. The ATT&CK techniques support *lessons learned and preparation*: which methods worked, and so which defences and rules to improve. The recommended actions are split into *containment* and *eradication and recovery*.
+
+**What would you contain first in the full attack chain?**
+The workstation, WKS-FIN-03: disconnect it from the network. That one action cuts the attacker's connection, stops any more data leaving and stops them moving to other machines. Next, block the attacker's address 198.51.100.23 at the firewall and disable the svc_update administrator account they created. Then reset a.khan's password, because every step ran under that account, and remove the phishing email from all mailboxes so nobody else opens it. The machine is isolated, not switched off: turning it off would destroy evidence held in its memory.
