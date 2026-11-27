@@ -2,7 +2,7 @@
 
 A threat model is a written answer to four questions: what are we building, what can go wrong, what are we doing about it, and what are we choosing to live with. This one covers Sentinel itself, not the simulated attacks it detects.
 
-**Status, 27 November 2026.** This is a manual review: Claude read every backend file and the frontend's data paths, and fixed what it found (see "Fixed in Phase 6"). The automated scan by the Claude Security plugin has **not** run yet. It needs a Claude Code setting called "Dynamic workflows", which was off in the session that built Phase 6. Run it before the site goes public and add its results to the review log at the end.
+**Status, 27 November 2026.** This is a manual review: Claude read every backend file and the frontend's data paths, and fixed what it found (see "Fixed in Phase 6"). The automated scan by the Claude Security plugin then ran on the backend. It found no High or Critical issues, and 3 Medium and 3 Low ones. They are listed in the review log at the end.
 
 ## What is being protected
 
@@ -88,4 +88,19 @@ Single sign-on and roles (analyst, lead, read-only); a record of who changed whi
 | 27 Nov 2026 | `pip-audit` on `backend/requirements.txt` | No known vulnerabilities |
 | 27 Nov 2026 | `npm audit` on the frontend | 4 moderate, fixed by `npm audit fix`; now 0 |
 | 27 Nov 2026 | Search of the git history for API keys | None found |
-| Not yet run | Claude Security plugin scan | Needs "Dynamic workflows" switched on |
+| 27 Nov 2026 | Claude Security plugin scan of `backend/` (medium effort, commit `ce94f41`, every finding checked by an independent verifier panel) | 6 findings: 0 Critical, 0 High, 3 Medium, 3 Low. None fixed yet; listed below |
+
+### Open findings from the plugin scan
+
+None is High or Critical. All are about availability, or about spending API credit in local live mode.
+
+| # | Severity | Finding | Suggested fix |
+| --- | --- | --- | --- |
+| F1 | Medium | No request body size limit. One huge JSON body sent to a `PATCH` route is read whole into memory and can restart the free instance. | `FastAPI(max_body_size=64_000)` |
+| F2 | Medium | PDF requests waiting for the one-at-a-time lock keep a database connection and a worker thread for up to 15 s. About 15 parallel requests then stall the whole API. | Take the lock before touching the database, and refuse at once instead of waiting |
+| F3 | Medium | Repeated `full_chain` runs merge into one incident of thousands of alerts, and each PDF of it is very slow to build. | Cap the rows in the report, or the alerts per incident |
+| F4 | Low | The cross-site check trusts `Sec-Fetch-Site` only. DNS rebinding, or an old browser, can drive a local live-mode Sentinel. | Allow-list the `Host` header, and require `Origin` on writes |
+| F5 | Low | The incident summary prompt has no cap on the number of alerts, so its cost grows with the incident. | Cap the alerts block at 50, like the evidence lines |
+| F6 | Low | Live AI calls have no overall rate limit, and failures are retried, so each `POST` can bill again. | A per-minute cap on live calls, and a spending cap on the key in the Console |
+
+F4 to F6 need live mode, which the public site never runs. The public site's exposure comes from F1 to F3, which can make it restart with an empty store.
